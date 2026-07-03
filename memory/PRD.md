@@ -112,3 +112,11 @@
 ✅ Incoming call ringtone + vibration: /app/frontend/assets/sounds/ringtone.wav (generated double-beep), expo-audio useAudioPlayer looped + Vibration.vibrate([600,1000],true) while call.status==="incoming" in CallContext
 ✅ Connect page language chips shrunk (compact: flag 9, font 9, padding 4/1, gap 2) in LanguagePair.tsx
 Note: Daily streak (backend touch_streak + profile/user page display) already existed from iteration 2.
+
+## Deployment readiness fixes (this session — deployment_agent PASS)
+✅ .gitignore: removed .env/.env.*/*.env blocks (env files must be tracked for deploys)
+✅ frontend/.env: added EXPO_TUNNEL_SUBDOMAIN=social-profile-37, EXPO_USE_FAST_RESOLVER="1"
+✅ Supervisor expo command now `expo start --tunnel --port 3000` + @expo/ngrok devDep installed
+⚠️ ngrok install re-hoisted event-target-shim@6 to root → Metro "Missing ./index specifier" (react-native-webrtc imports event-target-shim/index). Fixed via patch-package: patches/event-target-shim+6.0.2.patch (adds "./index" export) + postinstall script. DO NOT REMOVE the patch or postinstall.
+✅ N+1 queries batched ($in + map): moments.py (list authors, comment authors), chats.py (list partners; conversation_public/moment_public accept optional prefetched doc), rooms.py (list hosts)
+✅ db.py ensure_indexes: per-index try/except (idempotent, survives transient Atlas handshake EOF — the original MongoDataMigrate failure was a retryable Atlas connection blip during index restore)

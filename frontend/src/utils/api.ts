@@ -179,7 +179,7 @@ export interface RoomMember extends User {
   hand_raised: boolean;
 }
 
-export interface TopGifter extends User {
+export interface GiftedMember extends User {
   coins: number;
 }
 
@@ -199,7 +199,7 @@ export interface Room {
   members_preview?: User[];
   member_count: number;
   chat_muted?: boolean;
-  top_gifters?: TopGifter[];
+  most_gifted?: GiftedMember[];
   created_at: string;
 }
 

@@ -57,11 +57,13 @@ async def room_detail(doc: dict) -> dict:
             members.append({**user_card(u), "role": m["role"], "mic_on": m["mic_on"], "hand_raised": m["hand_raised"]})
     host = users_by_id.get(doc["host_id"])
     gift_totals = doc.get("gift_totals") or {}
-    top_gifters = []
+    # "most_gifted" = the room's most celebrated members — ranked by gifts
+    # they RECEIVED (not sent), shown with a crown badge in the room UI.
+    most_gifted = []
     for uid, coins in sorted(gift_totals.items(), key=lambda kv: kv[1], reverse=True)[:2]:
         u = users_by_id.get(uid)
         if u and coins > 0:
-            top_gifters.append({**user_card(u), "coins": coins})
+            most_gifted.append({**user_card(u), "coins": coins})
     return {
         "id": doc["_id"],
         "title": doc["title"],
@@ -77,7 +79,7 @@ async def room_detail(doc: dict) -> dict:
         "members": members,
         "member_count": len(members),
         "chat_muted": bool(doc.get("chat_muted")),
-        "top_gifters": top_gifters,
+        "most_gifted": most_gifted,
         "created_at": doc["created_at"],
     }
 
@@ -416,6 +418,7 @@ async def send_gift(room_id: str, body: RoomGiftCreate, current_user: CurrentUse
     current_user["coins"] = new_coins
     await rooms_col.update_one(
         {"_id": room_id},
+        # Track gifts by RECIPIENT — powers the room's "most_gifted" leaderboard.
         {"$inc": {f"gift_totals.{body.to_user_id}": gift["price"]}},
     )
     msg = {

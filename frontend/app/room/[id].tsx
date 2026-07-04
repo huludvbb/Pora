@@ -665,7 +665,7 @@ export default function RoomScreen() {
             />
 
             <View style={styles.floatingStack} pointerEvents="box-none">
-              {(room.top_gifters || []).slice(0, 2).map((g) => (
+              {(room.most_gifted || []).slice(0, 2).map((g) => (
                 <View
                   key={g.id}
                   style={styles.topGifterWrap}

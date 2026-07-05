@@ -74,6 +74,9 @@ export default function RoomScreen() {
   const [sendingGiftId, setSendingGiftId] = useState<string | null>(null);
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translatingId, setTranslatingId] = useState<string | null>(null);
+  // Auto-translate incoming chat messages (bar toggle, HelloTalk-style).
+  const [autoTranslate, setAutoTranslate] = useState(false);
+  const autoTranslateRef = useRef(false);
   const chatListRef = useRef<FlatList<RoomMessage>>(null);
 
   const members: RoomMember[] = room?.members || [];
@@ -139,18 +142,39 @@ export default function RoomScreen() {
           }, 3000);
         }
       } else if (event.type === "room_message" && event.message?.room_id === id) {
+        const incoming = event.message as RoomMessage;
         setMessages((prev) =>
-          prev.some((m) => m.id === event.message.id)
-            ? prev
-            : [...prev, event.message],
+          prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming],
         );
+        // Auto-translate other people's text messages when the toggle is on.
+        if (
+          autoTranslateRef.current &&
+          incoming.text &&
+          incoming.type !== "system" &&
+          incoming.type !== "gift" &&
+          incoming.sender?.id !== user?.id
+        ) {
+          api
+            .post<{ translated: string }>("/ai/translate", {
+              text: incoming.text,
+              target_language: user?.native_language || "en",
+            })
+            .then((res) =>
+              setTranslations((prev) =>
+                prev[incoming.id] !== undefined
+                  ? prev
+                  : { ...prev, [incoming.id]: res.translated },
+              ),
+            )
+            .catch(() => {});
+        }
       } else if (event.type === "room_ended" && event.room_id === id) {
         Alert.alert("Room ended", "The host has ended this room.");
         router.back();
       }
     });
     return unsub;
-  }, [id, subscribe, router, user?.id]);
+  }, [id, subscribe, router, user?.id, user?.native_language]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -343,6 +367,47 @@ export default function RoomScreen() {
     }
   };
 
+  // Silent translate used by the auto-translate toggle — no spinners, and
+  // never overwrites a translation that's already there.
+  const translateIncoming = useCallback(
+    async (msg: RoomMessage) => {
+      if (!msg.text || msg.type === "system" || msg.type === "gift") return;
+      try {
+        const res = await api.post<{ translated: string }>("/ai/translate", {
+          text: msg.text,
+          target_language: user?.native_language || "en",
+        });
+        setTranslations((prev) =>
+          prev[msg.id] !== undefined ? prev : { ...prev, [msg.id]: res.translated },
+        );
+      } catch {
+        // silent — user can still tap the per-message translate button
+      }
+    },
+    [user?.native_language],
+  );
+
+  const toggleAutoTranslate = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = !autoTranslate;
+    setAutoTranslate(next);
+    autoTranslateRef.current = next;
+    if (next) {
+      // Catch up on the latest visible messages from others.
+      messages
+        .filter(
+          (m) =>
+            m.text &&
+            m.type !== "system" &&
+            m.type !== "gift" &&
+            m.sender?.id !== user?.id &&
+            translations[m.id] === undefined,
+        )
+        .slice(-8)
+        .forEach((m) => translateIncoming(m));
+    }
+  };
+
   const onAvatarPress = (member: RoomMember) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (member.id === user?.id) {
@@ -434,7 +499,7 @@ export default function RoomScreen() {
         {member.hand_raised && (
           <View style={styles.handBadge}>
             <MaterialCommunityIcons
-              name="human-greeting-variant"
+              name="hand-back-left"
               size={12}
               color="#FFF"
             />
@@ -472,7 +537,7 @@ export default function RoomScreen() {
       {member.hand_raised && (
         <View style={styles.handBadgeSmall}>
           <MaterialCommunityIcons
-            name="human-greeting-variant"
+            name="hand-back-left"
             size={10}
             color="#FFF"
           />
@@ -578,7 +643,7 @@ export default function RoomScreen() {
           >
             <View style={styles.handNotifyIconWrap}>
               <MaterialCommunityIcons
-                name="human-greeting-variant"
+                name="hand-back-left"
                 size={16}
                 color="#FFFFFF"
               />
@@ -788,9 +853,10 @@ export default function RoomScreen() {
                   />
                 ) : (
                   <MaterialCommunityIcons
-                    name="human-greeting-variant"
-                    size={24}
+                    name="hand-back-left"
+                    size={23}
                     color="#FFFFFF"
+                    style={{ marginTop: -3 }}
                   />
                 )}
               </Pressable>
@@ -847,23 +913,33 @@ export default function RoomScreen() {
             {!inputFocused && (
               <>
                 <Pressable
-                  testID="room-mute-toggle-btn"
+                  testID="room-bar-mic-btn"
                   style={styles.iconBtn}
-                  onPress={() => {
-                    if (isHost) toggleChatMute();
-                    else
-                      Alert.alert(
-                        "Room chat",
-                        room.chat_muted
-                          ? "Chat is muted by the host."
-                          : "Chat is open.",
-                      );
-                  }}
+                  onPress={isSpeaker ? toggleMic : toggleHand}
                 >
                   <Ionicons
-                    name={room.chat_muted ? "chatbox-outline" : "chatbox-ellipses-outline"}
+                    name={
+                      isSpeaker
+                        ? me?.mic_on
+                          ? "mic"
+                          : "mic-off-outline"
+                        : "mic-outline"
+                    }
                     size={19}
-                    color={room.chat_muted ? "#F87171" : "rgba(255,255,255,0.75)"}
+                    color={
+                      isSpeaker && me?.mic_on ? "#4ADE80" : "rgba(255,255,255,0.85)"
+                    }
+                  />
+                </Pressable>
+                <Pressable
+                  testID="room-autotranslate-btn"
+                  style={styles.iconBtn}
+                  onPress={toggleAutoTranslate}
+                >
+                  <MaterialCommunityIcons
+                    name={autoTranslate ? "translate" : "translate-off"}
+                    size={19}
+                    color={autoTranslate ? "#4ADE80" : "rgba(255,255,255,0.85)"}
                   />
                 </Pressable>
                 <Pressable
@@ -871,7 +947,7 @@ export default function RoomScreen() {
                   style={styles.iconBtn}
                   onPress={() => setToolsOpen(true)}
                 >
-                  <Ionicons name="grid-outline" size={19} color="rgba(255,255,255,0.75)" />
+                  <Ionicons name="grid-outline" size={19} color="rgba(255,255,255,0.85)" />
                   <View style={styles.newBadge}>
                     <Text style={styles.newBadgeText}>NEW</Text>
                   </View>
@@ -881,14 +957,15 @@ export default function RoomScreen() {
                   style={styles.iconBtn}
                   onPress={() => router.push("/market")}
                 >
-                  <Ionicons name="storefront-outline" size={19} color="rgba(255,255,255,0.75)" />
+                  <Text style={styles.barEmoji}>🏪</Text>
                 </Pressable>
                 <Pressable
                   testID="room-gift-btn"
                   style={styles.iconBtn}
                   onPress={() => openGiftModal()}
                 >
-                  <Ionicons name="gift-outline" size={19} color="rgba(255,255,255,0.75)" />
+                  <Text style={styles.barEmoji}>🎁</Text>
+                  <View style={styles.giftDot} />
                 </Pressable>
               </>
             )}
@@ -1099,7 +1176,7 @@ export default function RoomScreen() {
                     </Text>
                     {m.hand_raised && (
                       <MaterialCommunityIcons
-                        name="human-greeting-variant"
+                        name="hand-back-left"
                         size={17}
                         color="#FBBF24"
                       />
@@ -1755,6 +1832,18 @@ const makeStyles = () =>
       borderRadius: 5,
       paddingHorizontal: 3,
       paddingVertical: 0.5,
+    },
+    barEmoji: {
+      fontSize: 17,
+    },
+    giftDot: {
+      position: "absolute",
+      top: 2,
+      right: 3,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: "#F472B6",
     },
     newBadgeText: {
       fontFamily: fonts.textBold,

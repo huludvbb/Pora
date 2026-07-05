@@ -574,6 +574,33 @@ agent_communication:
     - agent: "testing"
       message: "✅ PARTNER CARD TAGS FIX VERIFIED - ALL TESTS PASSED (8 cards, 0 failures). Tested on mobile viewport (390x844) with mei@demo.com. Scrolled through ALL partner cards: Didi, Bhh, Gigi, Didi, Demo User, Emma Wilson, Amélie Laurent, Yuki Tanaka. VERIFICATION RESULTS: (1) ✅ ALL tags on SINGLE horizontal row - measured y-coordinates for all cards with multiple tags show 0.00px difference (perfect alignment). Cards tested: Didi (2 tags, y-diff:0.00px), Bhh (2 tags, y-diff:0.00px), Demo User (2 tags, y-diff:0.00px), Yuki Tanaka (2 tags, y-diff:0.00px). (2) ✅ Long labels truncate with ellipsis - screenshots show 'Loves Fitne...', 'Language exchan...', 'Similar intere...' with proper truncation. (3) ✅ NO wrapping detected - 7 cards with tags all PASSED, 1 card with no tags. (4) ✅ No horizontal overflow outside cards. (5) ✅ No console errors - only minor font loading failures (non-critical) and 'props.pointerEvents is deprecated' warning (non-blocking). Screenshots captured at top/middle/bottom of list as evidence. FIX WORKING PERFECTLY. Ready for main agent to summarize and finish."
 
+## Test Run — Round 11 (hand-only icon + HelloTalk bottom bar with auto-translate)
+user_problem_statement: (1) Remove the head from the raise-hand icon (hand only), nudged slightly up. (2) Replace the voice room bottom bar to match reference - Comment input + mic icon + slashed-translate toggle + grid(NEW) + colored shop + colored gift icons.
+
+frontend:
+  - task: "Hand icon: human-greeting-variant -> hand-back-left (no head) everywhere, float icon nudged up"
+    implemented: true
+    working: true
+    file: "frontend/app/room/[id].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "All 5 spots now use MaterialCommunityIcons hand-back-left; float button icon size 23 with marginTop -3. Verified via screenshot."
+  - task: "Bottom bar redesign: mic btn + auto-translate toggle + grid NEW + emoji shop/gift with dot"
+    implemented: true
+    working: true
+    file: "frontend/app/room/[id].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Replaced mute-toggle bar button (host mute still in 3-dot menu) with: room-bar-mic-btn (speaker toggles mic, listener raises hand), room-autotranslate-btn (MCI translate/translate-off, green when on) - when ON auto-translates incoming messages + catches up last 8 via /ai/translate, grid+NEW unchanged, shop 🏪 and gift 🎁 emoji buttons with pink dot. Verified via screenshots - toggle ON produced live translation (主題是什么? under Titu's message), all testIDs found."
+
 ## Test Run — Round 10 (hand icon replaced with person-raising-hand)
 user_problem_statement: Replace the hand ✋ icon in the voice room with the provided reference icon (person silhouette with one raised arm, HelloTalk-style).
 

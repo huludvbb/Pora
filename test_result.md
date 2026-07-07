@@ -1479,3 +1479,215 @@ test_plan:
 
     - agent: "testing"
       message: "✅ ROUND 15 BACKEND TESTS COMPLETED - ALL TESTS PASSED (6/6 scenarios). Test results: SCENARIO 1 ✅ - Host shares with caption: mei@demo.com created public room 'Round 15 Test', POST /api/rooms/{room_id}/share-to-moments with body {text:'Come join us! 🎙️'} returned 201 with {shared:true}. GET /api/moments confirmed moment exists with text='Come join us! 🎙️', room.id=room_id, author.id=mei_id. SCENARIO 2 ✅ - Audience (non-host) shares with caption: diego@demo.com joined room, POST /api/rooms/{room_id}/share-to-moments with body {text:'This is awesome'} returned 201 (NOT 403 as before). GET /api/moments confirmed moment exists with text='This is awesome', room.id=room_id, author.id=diego_id. This confirms the key feature change - audience members can now share rooms to moments. SCENARIO 3 ✅ - Share without caption: POST /api/rooms/{room_id}/share-to-moments with empty body {} returned 201. GET /api/moments confirmed moment created with auto-generated text '🎙️ Live voice room — join and chat: \"Round 15 Test\"' (starts with 🎙️ and contains room title). SCENARIO 4 ✅ - Private room refuses: Created private room 'Secret', POST /api/rooms/{priv_id}/share-to-moments with body {text:'try'} returned 400 with detail 'Private rooms can't be shared'. SCENARIO 5 ✅ - Unknown room: POST /api/rooms/nonexistent-id-12345/share-to-moments returned 404. SCENARIO 6 ✅ - Text validation: POST /api/rooms/{room_id}/share-to-moments with body {text:'a'*600} (over 500 chars) returned 422 with pydantic validation error 'String should have at most 500 characters'. All HTTP status codes correct, all response fields verified. Both key changes working correctly: (1) Any authenticated user (not just host) can share to moments ✅ (2) Body accepts optional {text} for custom caption ✅. No critical issues found. Backend feature fully functional."
+
+## Test Run — Room Share Card matches Voice-Tab Card + Announcement + Full Compose page (Round 16)
+user_problem_statement: (1) Room-share card in moments/chat should look EXACTLY like the voice-tab list card (same gradient, LIVE bars, host row, member stack, topic + language badges). (2) When user creates a moment (create FAB), open full-page composer with photo first, then text, then TAG chips (suggested + custom). (3) Room creation should have an announcement field + prettier design. (4) 3-dot switcher panel background should be a deeper shade of the room's own background color, NOT pitch black.
+
+backend:
+  - task: "GET /api/moments room card includes host + members_preview + background + created_at"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/moments.py, backend/routes/chats.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "_room_card and _room_share_card now include full voice-tab card shape: host {id,name,avatar_url,country,active_frame}, members_preview [up to 4 user cards], member_count, background (int 0-3 or null), created_at, is_private, topic, mode, languages. Used across both /moments feed responses and /chats/{id}/messages responses so the client can render identical cards."
+  - task: "POST /api/moments accepts tags[] (up to 8, lowercased alphanumeric+underscore)"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/moments.py, backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "MomentCreate now accepts optional tags: list[str] up to 8 entries. Server sanitizes: lowercase, strip leading #, keep only [a-z0-9_], dedupe, drop empties, cap 30 chars each. Stored on moment.tags. Returned by moment_public in tags field. Existing text-only/photo-only posts unaffected."
+  - task: "POST /api/rooms accepts announcement field"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/rooms.py, backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "RoomCreate: optional announcement str (max 300 chars). Stored on room doc, returned in room_detail responses as 'announcement'. Empty string treated as null."
+
+frontend:
+  - task: "RoomMomentCard rewritten to match voice-tab card exactly"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/RoomMomentCard.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Complete rewrite. Uses BG_GRADIENTS palette (purple/blue/pink/orange) same as voice.tsx. Layout: language flag + topic badge + private lock on top-left, LIVE bars badge top-right, big title, host row (avatar + name · timeAgo) on bottom-left, member avatar stack + count pill bottom-right. Cross-referenced against voice.tsx line-by-line."
+  - task: "Full-page moment composer at /moment-compose"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/moment-compose.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Photo picker area (dashed placeholder or preview with remove) → autofocused text area with counter → tags section (selected chips, suggested chips list, custom input with # prefix + add button). Cap 8 tags. testIDs: compose-photo-add-btn, compose-text-input, compose-tag-suggest-{tag}, compose-tag-selected-{tag}, compose-tag-custom-input, compose-tag-add-btn, compose-post-btn."
+  - task: "Voice room creation modal: announcement input"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/voice.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added new field 'Announcement' with megaphone icon + label + 'Optional' hint + multi-line input (300 char max) below the title. Placeholder guides host to pin house rules / welcome message. testID room-announcement-input."
+  - task: "3-dot switcher panel bg = deeper room background tint (not black)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/room/[id].tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "New PANEL_BG_COLORS array mirrors BG_COLORS with slightly deeper tones (#2E2461/#131B29/#331349/#0C2229). Panel picks the tone matching the room's own background so it feels like part of the room, not a pitch-black overlay."
+
+backend:
+  - task: "Room create with announcement + background fields"
+    implemented: true
+    working: true
+    file: "backend/routes/rooms.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "POST /api/rooms accepts announcement (max 300 chars) and background (0-3). Response includes these fields in room detail."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: POST /api/rooms with {title:'Card Match Test', language:'en', topic:'General', mode:'chat', is_private:false, background:2, announcement:'Please be kind ✨'} returns 201. Response verified: announcement='Please be kind ✨', background=2, host object contains id/name/avatar_url. All fields correct."
+  
+  - task: "Shared room card via moments matches voice-tab shape"
+    implemented: true
+    working: true
+    file: "backend/routes/moments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "GET /api/moments returns room field with full voice-tab card shape: id, title, is_live, background, topic, is_private, language, created_at, member_count, host (with id/name/avatar_url/country), members_preview (list of user cards)."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: Diego joined room, shared to moments with text 'Come join'. GET /api/moments found moment with correct room field. Verified all required fields: id, title='Card Match Test', is_live=true, background=2, topic='General', is_private=false, language='en', created_at (ISO string), member_count=2, host (mei's card with id/name/avatar_url/country), members_preview (2 members with id/name/avatar_url). Room card shape matches voice-tab exactly."
+  
+  - task: "Shared room card via chat message"
+    implemented: true
+    working: true
+    file: "backend/routes/chats.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "POST /api/chats/{cid}/messages accepts room_id. Creates type='room' message with room field containing same full shape as moments room card."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: Mei created conversation with Diego, sent room share message with room_id. GET /api/chats/{cid}/messages shows last message with type='room'. Verified message.room contains all required fields matching voice-tab shape: id, title, is_live, background, topic, is_private, language, created_at, member_count, host (complete), members_preview (2 members). Room card shape identical to moments."
+  
+  - task: "Moment tag sanitization"
+    implemented: true
+    working: true
+    file: "backend/routes/moments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "POST /api/moments accepts tags[] array. Sanitization: lowercase, strip #, keep alphanumeric + underscore only, drop empty strings, dedupe, preserve order."
+        - working: false
+          agent: "testing"
+          comment: "❌ BUG FOUND: POST /api/moments with tags=['language', '#Grammar', 'Studying_Hard', '  ', 'meet@new'] returns correct tags=['language', 'grammar', 'studying_hard', 'meetnew'] in response. BUT GET /api/moments returns tags=[] (empty). ROOT CAUSE: /app/backend/routes/moments.py line 171-182 list_moments projection missing 'tags': 1 field. Tags stored correctly but not fetched."
+        - working: true
+          agent: "testing"
+          comment: "✅ FIX APPLIED & VERIFIED: Added 'tags': 1 to projection in list_moments (line 175). Restarted backend. Re-tested: POST /api/moments with tags=['language', '#Grammar', 'Studying_Hard', '  ', 'meet@new'] returns tags=['language', 'grammar', 'studying_hard', 'meetnew']. GET /api/moments now correctly returns same tags. Sanitization verified: 'language' unchanged, '#Grammar' → 'grammar' (# stripped, lowercase), 'Studying_Hard' → 'studying_hard' (lowercase, underscore kept), '  ' dropped (empty), 'meet@new' → 'meetnew' (@ stripped). All working correctly."
+  
+  - task: "Tag limit validation (max 8 tags)"
+    implemented: true
+    working: true
+    file: "backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "MomentCreate model has tags: Optional[list[str]] = Field(default=None, max_length=8). Pydantic validates max 8 tags."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: POST /api/moments with 9 tags ['a','b','c','d','e','f','g','h','i'] correctly rejected with 422 (Pydantic validation error). Max 8 tags enforced."
+  
+  - task: "Announcement length limit validation (max 300 chars)"
+    implemented: true
+    working: true
+    file: "backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "RoomCreate model has announcement: Optional[str] = Field(default=None, max_length=300). Pydantic validates max 300 chars."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: POST /api/rooms with 400-char announcement correctly rejected with 422 (Pydantic validation error). Max 300 chars enforced."
+  
+  - task: "Backward compatibility (optional fields)"
+    implemented: true
+    working: true
+    file: "backend/routes/moments.py, backend/routes/rooms.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Moments without tags return tags=[]. Rooms without announcement return announcement=null. Both fields optional."
+        - working: true
+          agent: "testing"
+          comment: "✅ TESTED: (1) POST /api/moments without tags field returns 201 with tags=[]. (2) POST /api/rooms without announcement field returns 201 with announcement=null. Backward compatibility confirmed."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.16"
+  test_sequence: 15
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Round 16 backend features"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: "Round 16 backend changes: (1) Moments/chats room_card now returns full voice-tab shape (host + members_preview + background + created_at + topic + is_private). (2) POST /moments accepts tags[]. (3) POST /rooms accepts announcement. Please test: (A) Login mei, create room title:'Card Match Test', language:'en', topic:'General', background:2, announcement:'Please be kind ✨' → 201. Verify response.announcement='Please be kind ✨' and response.background=2. (B) Diego shares that room to moments: POST /rooms/{room_id}/share-to-moments {text:'Come join'} → 201. GET /moments → find that moment. Verify moment.room contains: host (mei's card with name, avatar_url), members_preview (list, contains diego + mei entries), member_count>=1, background=2, topic='General', is_private=false, language='en', created_at (ISO string). (C) Send room in chat: POST /chats/{cid}/messages {room_id} → verify message.room has same full shape. (D) POST /moments {text:'Hi', tags:['language', '#Grammar', 'Studying_Hard', '  ', 'meet@new']} → 201. Verify moment.tags == ['language','grammar','studying_hard','meetnew'] (lowercase, stripped #, kept alnum+underscore only, empty dropped). (E) POST /moments with 9+ tags → 422. (F) POST /rooms with announcement='a'*400 → 422 (exceeds 300 max). Don't test frontend."
+    - agent: "testing"
+      message: "✅ ROUND 16 BACKEND TESTING COMPLETED - ALL 7 TESTS PASSED (6/7 initially, 1 bug fixed). Test results: (A) ✅ Room create with announcement + background: POST /api/rooms returns 201, announcement='Please be kind ✨', background=2, host object complete. (B) ✅ Shared room card via moments: Diego joined room, shared to moments. GET /api/moments shows moment with room field containing all required fields (id, title, is_live=true, background=2, topic, is_private=false, language, created_at, member_count=2, host with id/name/avatar_url/country, members_preview with 2 members). (C) ✅ Shared room card via chat: POST /api/chats/{cid}/messages with room_id creates type='room' message. GET messages shows room field with identical shape to moments. (D) ✅ Moment tag sanitization: POST /api/moments with tags=['language','#Grammar','Studying_Hard','  ','meet@new'] returns correct sanitized tags=['language','grammar','studying_hard','meetnew']. BUG FOUND & FIXED: GET /api/moments was returning tags=[] because projection in list_moments was missing 'tags':1 field. Added field to line 175 in /app/backend/routes/moments.py, restarted backend, re-tested successfully. (E) ✅ Tag limit: POST /api/moments with 9 tags correctly rejected with 422. (F) ✅ Announcement length limit: POST /api/rooms with 400-char announcement correctly rejected with 422. (G) ✅ Backward compatibility: Moments without tags return tags=[], rooms without announcement return announcement=null. ONE BUG FIXED: Missing 'tags' field in moments list projection. All features working correctly after fix. Ready for main agent to summarize and finish."

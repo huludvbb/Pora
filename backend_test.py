@@ -1,508 +1,659 @@
 #!/usr/bin/env python3
 """
-Backend API test for Round 15: Share-to-Moments Endpoint Update
-Tests POST /api/rooms/{room_id}/share-to-moments with new features:
-1. Any authenticated user (not just host) can share
-2. Body accepts optional {text} for custom caption
+Round 16 Backend Testing
+Tests for:
+A) Room create with announcement + background
+B) Shared room card matches voice-tab shape (via moments)
+C) Shared room card via chat message
+D) Moment tag sanitization
+E) Tag limit (9+ tags rejected)
+F) Announcement length limit
+G) Backward compatibility
 """
 
 import requests
-import json
+import sys
 from datetime import datetime
 
-# Backend URL - using localhost since we're testing from inside the container
-BASE_URL = "http://localhost:8001/api"
+# Backend URL from frontend/.env
+BASE_URL = "https://23e89f0c-4dcc-40fe-82d2-2e242a0a0207.preview.emergentagent.com/api"
 
-def login_user(email, password):
-    """Helper: Login and return token"""
-    url = f"{BASE_URL}/auth/login"
-    resp = requests.post(url, json={"email": email, "password": password})
+# Test credentials
+MEI_EMAIL = "mei@demo.com"
+MEI_PASSWORD = "Demo1234!"
+DIEGO_EMAIL = "diego@demo.com"
+DIEGO_PASSWORD = "Demo1234!"
+
+def login(email, password):
+    """Login and return token + user data"""
+    resp = requests.post(f"{BASE_URL}/auth/login", json={"email": email, "password": password})
     if resp.status_code != 200:
-        raise Exception(f"Login failed for {email}: {resp.status_code} {resp.text}")
-    return resp.json()["token"], resp.json()["user"]["id"]
+        print(f"❌ Login failed for {email}: {resp.status_code} {resp.text}")
+        return None, None
+    data = resp.json()
+    return data.get("token"), data.get("user")
 
-
-def test_scenario_1_host_shares_with_caption():
-    """
-    Scenario 1: Host shares with caption
-    - Login mei, create a public room
-    - POST /api/rooms/{room_id}/share-to-moments with body {"text": "Come join us! 🎙️"}
-    - Expect 201, response {"shared": true}
-    - GET /api/moments — find moment with text=="Come join us! 🎙️" AND room_id==room_id AND user_id==mei_id
-    """
+def test_a_room_create_with_announcement_background():
+    """A) Room create with announcement + background"""
     print("\n" + "="*80)
-    print("SCENARIO 1: Host shares with caption")
+    print("TEST A: Room create with announcement + background")
     print("="*80)
     
-    # Login mei
-    print("Step 1: Login mei@demo.com")
-    mei_token, mei_id = login_user("mei@demo.com", "Demo1234!")
-    print(f"✅ Logged in as mei (user_id: {mei_id})")
+    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
+    if not token:
+        return False
     
-    # Create public room
-    print("\nStep 2: Create public room")
-    create_url = f"{BASE_URL}/rooms"
-    headers = {"Authorization": f"Bearer {mei_token}"}
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # 1. Create room with announcement and background
     room_data = {
-        "title": "Round 15 Test",
+        "title": "Card Match Test",
         "language": "en",
         "topic": "General",
         "mode": "chat",
-        "is_private": False
+        "is_private": False,
+        "background": 2,
+        "announcement": "Please be kind ✨"
     }
-    resp = requests.post(create_url, json=room_data, headers=headers)
+    
+    resp = requests.post(f"{BASE_URL}/rooms", json=room_data, headers=headers)
+    print(f"\n1. POST /api/rooms → {resp.status_code}")
+    
     if resp.status_code != 201:
-        print(f"❌ FAILED: Room creation failed with {resp.status_code}")
+        print(f"   ❌ Expected 201, got {resp.status_code}")
         print(f"   Response: {resp.text}")
         return False
     
     room = resp.json()
-    room_id = room["id"]
-    print(f"✅ Created room: {room_id} (title: {room['title']})")
+    room_id = room.get("id")
     
-    # Share to moments with caption
-    print("\nStep 3: Share to moments with caption")
-    share_url = f"{BASE_URL}/rooms/{room_id}/share-to-moments"
-    share_body = {"text": "Come join us! 🎙️"}
-    resp = requests.post(share_url, json=share_body, headers=headers)
+    # 2. Verify response fields
+    print(f"\n2. Verify response fields:")
     
-    if resp.status_code != 201:
-        print(f"❌ FAILED: Expected 201, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
+    announcement = room.get("announcement")
+    print(f"   - announcement: {repr(announcement)}")
+    if announcement != "Please be kind ✨":
+        print(f"   ❌ Expected 'Please be kind ✨', got {repr(announcement)}")
+        return False
+    print(f"   ✅ announcement matches")
+    
+    background = room.get("background")
+    print(f"   - background: {background}")
+    if background != 2:
+        print(f"   ❌ Expected 2, got {background}")
+        return False
+    print(f"   ✅ background matches")
+    
+    host = room.get("host")
+    print(f"   - host: {host}")
+    if not host:
+        print(f"   ❌ host is missing")
         return False
     
-    print(f"✅ POST /api/rooms/{room_id}/share-to-moments returned 201")
-    
-    data = resp.json()
-    if data.get("shared") is not True:
-        print(f"❌ FAILED: Expected {{shared: true}}, got {data}")
+    if not host.get("id"):
+        print(f"   ❌ host.id is missing")
         return False
     
-    print(f"✅ Response: {data}")
+    if not host.get("name"):
+        print(f"   ❌ host.name is missing")
+        return False
     
-    # Verify moment created
-    print("\nStep 4: Verify moment in feed")
-    moments_url = f"{BASE_URL}/moments"
-    resp = requests.get(moments_url, headers=headers)
+    if "avatar_url" not in host:
+        print(f"   ❌ host.avatar_url is missing")
+        return False
+    
+    print(f"   ✅ host contains id, name, avatar_url")
+    
+    print(f"\n✅ TEST A PASSED")
+    return room_id
+
+def test_b_shared_room_card_via_moments(room_id):
+    """B) Shared room card matches voice-tab shape (via moments)"""
+    print("\n" + "="*80)
+    print("TEST B: Shared room card matches voice-tab shape (via moments)")
+    print("="*80)
+    
+    diego_token, diego_user = login(DIEGO_EMAIL, DIEGO_PASSWORD)
+    if not diego_token:
+        return False
+    
+    diego_headers = {"Authorization": f"Bearer {diego_token}"}
+    
+    # 1. Diego joins room
+    resp = requests.post(f"{BASE_URL}/rooms/{room_id}/join", headers=diego_headers)
+    print(f"\n1. POST /api/rooms/{room_id}/join → {resp.status_code}")
     
     if resp.status_code != 200:
-        print(f"❌ FAILED: GET /api/moments failed with {resp.status_code}")
+        print(f"   ❌ Expected 200, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+        return False
+    print(f"   ✅ Diego joined room")
+    
+    # 2. Diego shares room to moments
+    share_data = {"text": "Come join"}
+    resp = requests.post(f"{BASE_URL}/rooms/{room_id}/share-to-moments", json=share_data, headers=diego_headers)
+    print(f"\n2. POST /api/rooms/{room_id}/share-to-moments → {resp.status_code}")
+    
+    if resp.status_code != 201:
+        print(f"   ❌ Expected 201, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+        return False
+    print(f"   ✅ Room shared to moments")
+    
+    # 3. Get moments as Diego and find the shared room
+    resp = requests.get(f"{BASE_URL}/moments", headers=diego_headers)
+    print(f"\n3. GET /api/moments → {resp.status_code}")
+    
+    if resp.status_code != 200:
+        print(f"   ❌ Expected 200, got {resp.status_code}")
         return False
     
     moments = resp.json()
     
-    # Find moment with matching text, room.id, and author.id
-    found = False
-    for moment in moments:
-        if (moment.get("text") == "Come join us! 🎙️" and 
-            moment.get("room", {}).get("id") == room_id and 
-            moment.get("author", {}).get("id") == mei_id):
-            found = True
-            print(f"✅ Found moment in feed:")
-            print(f"   - text: {moment['text']}")
-            print(f"   - room.id: {moment['room']['id']}")
-            print(f"   - author.id: {moment['author']['id']}")
+    # Find moment with text "Come join"
+    target_moment = None
+    for m in moments:
+        if m.get("text") == "Come join":
+            target_moment = m
             break
     
-    if not found:
-        print(f"❌ FAILED: Moment not found in feed")
-        print(f"   Looking for: text='Come join us! 🎙️', room.id={room_id}, author.id={mei_id}")
+    if not target_moment:
+        print(f"   ❌ Could not find moment with text 'Come join'")
+        print(f"   Found {len(moments)} moments")
         return False
     
-    print(f"✅ SCENARIO 1 PASSED")
-    return True, room_id, mei_token, mei_id
+    print(f"   ✅ Found moment with text 'Come join'")
+    
+    # 4. Verify moment.room contains required fields
+    print(f"\n4. Verify moment.room shape:")
+    
+    room = target_moment.get("room")
+    if not room:
+        print(f"   ❌ moment.room is missing")
+        return False
+    
+    # Required fields
+    required_fields = {
+        "id": str,
+        "title": str,
+        "is_live": bool,
+        "background": int,
+        "topic": str,
+        "is_private": bool,
+        "language": str,
+        "created_at": str,
+        "member_count": int,
+        "host": dict,
+        "members_preview": list
+    }
+    
+    for field, expected_type in required_fields.items():
+        value = room.get(field)
+        if value is None and field not in room:
+            print(f"   ❌ room.{field} is missing")
+            return False
+        if value is not None and not isinstance(value, expected_type):
+            print(f"   ❌ room.{field} has wrong type: expected {expected_type}, got {type(value)}")
+            return False
+        print(f"   ✅ room.{field} = {repr(value)[:80]}")
+    
+    # Verify specific values
+    if room.get("title") != "Card Match Test":
+        print(f"   ❌ Expected title 'Card Match Test', got {repr(room.get('title'))}")
+        return False
+    
+    if room.get("is_live") != True:
+        print(f"   ❌ Expected is_live=true, got {room.get('is_live')}")
+        return False
+    
+    if room.get("background") != 2:
+        print(f"   ❌ Expected background=2, got {room.get('background')}")
+        return False
+    
+    if room.get("topic") != "General":
+        print(f"   ❌ Expected topic='General', got {repr(room.get('topic'))}")
+        return False
+    
+    if room.get("is_private") != False:
+        print(f"   ❌ Expected is_private=false, got {room.get('is_private')}")
+        return False
+    
+    if room.get("language") != "en":
+        print(f"   ❌ Expected language='en', got {repr(room.get('language'))}")
+        return False
+    
+    if room.get("member_count") < 2:
+        print(f"   ❌ Expected member_count >= 2, got {room.get('member_count')}")
+        return False
+    
+    # Verify host object
+    host = room.get("host")
+    if not host:
+        print(f"   ❌ room.host is missing")
+        return False
+    
+    mei_token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
+    mei_id = mei_user.get("id")
+    
+    if host.get("id") != mei_id:
+        print(f"   ❌ Expected host.id={mei_id}, got {host.get('id')}")
+        return False
+    
+    if not host.get("name"):
+        print(f"   ❌ host.name is missing")
+        return False
+    
+    if "avatar_url" not in host:
+        print(f"   ❌ host.avatar_url is missing")
+        return False
+    
+    if "country" not in host:
+        print(f"   ❌ host.country is missing")
+        return False
+    
+    print(f"   ✅ host object complete (id, name, avatar_url, country)")
+    
+    # Verify members_preview
+    members_preview = room.get("members_preview")
+    if not isinstance(members_preview, list):
+        print(f"   ❌ members_preview is not a list")
+        return False
+    
+    if len(members_preview) < 2:
+        print(f"   ❌ Expected at least 2 members in preview, got {len(members_preview)}")
+        return False
+    
+    # Check that members have id, name, avatar_url
+    for i, member in enumerate(members_preview[:2]):
+        if not member.get("id"):
+            print(f"   ❌ members_preview[{i}].id is missing")
+            return False
+        if not member.get("name"):
+            print(f"   ❌ members_preview[{i}].name is missing")
+            return False
+        if "avatar_url" not in member:
+            print(f"   ❌ members_preview[{i}].avatar_url is missing")
+            return False
+    
+    print(f"   ✅ members_preview contains at least 2 members with id/name/avatar_url")
+    
+    print(f"\n✅ TEST B PASSED")
+    return True
 
-
-def test_scenario_2_audience_shares_with_caption(room_id, mei_token):
-    """
-    Scenario 2: Audience (non-host) shares with caption — this was 403 previously
-    - Login diego
-    - Diego joins the room
-    - POST /api/rooms/{room_id}/share-to-moments with body {"text": "This is awesome"}
-    - Expect 201 (NOT 403)
-    - GET /api/moments — find moment with text=="This is awesome" AND room_id==room_id AND user_id==diego_id
-    """
+def test_c_shared_room_card_via_chat(room_id):
+    """C) Shared room card via chat message"""
     print("\n" + "="*80)
-    print("SCENARIO 2: Audience (non-host) shares with caption")
+    print("TEST C: Shared room card via chat message")
     print("="*80)
     
-    # Login diego
-    print("Step 1: Login diego@demo.com")
-    diego_token, diego_id = login_user("diego@demo.com", "Demo1234!")
-    print(f"✅ Logged in as diego (user_id: {diego_id})")
+    mei_token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
+    diego_token, diego_user = login(DIEGO_EMAIL, DIEGO_PASSWORD)
     
-    # Diego joins room
-    print(f"\nStep 2: Diego joins room {room_id}")
-    join_url = f"{BASE_URL}/rooms/{room_id}/join"
-    headers_diego = {"Authorization": f"Bearer {diego_token}"}
-    resp = requests.post(join_url, headers=headers_diego)
+    if not mei_token or not diego_token:
+        return False
+    
+    mei_headers = {"Authorization": f"Bearer {mei_token}"}
+    diego_id = diego_user.get("id")
+    mei_id = mei_user.get("id")
+    
+    # 1. Mei creates/finds conversation with Diego
+    conv_data = {"partner_id": diego_id}
+    resp = requests.post(f"{BASE_URL}/chats", json=conv_data, headers=mei_headers)
+    print(f"\n1. POST /api/chats (partner_id={diego_id}) → {resp.status_code}")
     
     if resp.status_code != 200:
-        print(f"❌ FAILED: Join room failed with {resp.status_code}")
+        print(f"   ❌ Expected 200, got {resp.status_code}")
         print(f"   Response: {resp.text}")
         return False
     
-    print(f"✅ Diego joined room")
+    conv = resp.json()
+    conv_id = conv.get("id")
+    print(f"   ✅ Conversation ID: {conv_id}")
     
-    # Diego shares to moments with caption
-    print("\nStep 3: Diego shares to moments with caption")
-    share_url = f"{BASE_URL}/rooms/{room_id}/share-to-moments"
-    share_body = {"text": "This is awesome"}
-    resp = requests.post(share_url, json=share_body, headers=headers_diego)
+    # 2. Mei sends room share message
+    msg_data = {"room_id": room_id}
+    resp = requests.post(f"{BASE_URL}/chats/{conv_id}/messages", json=msg_data, headers=mei_headers)
+    print(f"\n2. POST /api/chats/{conv_id}/messages (room_id={room_id}) → {resp.status_code}")
     
     if resp.status_code != 201:
-        print(f"❌ FAILED: Expected 201, got {resp.status_code}")
+        print(f"   ❌ Expected 201, got {resp.status_code}")
         print(f"   Response: {resp.text}")
-        if resp.status_code == 403:
-            print(f"   ⚠️  CRITICAL: Still getting 403 (non-host blocked) - feature not implemented!")
         return False
     
-    print(f"✅ POST /api/rooms/{room_id}/share-to-moments returned 201 (NOT 403)")
+    msg = resp.json()
+    print(f"   ✅ Room share message created")
     
-    data = resp.json()
-    if data.get("shared") is not True:
-        print(f"❌ FAILED: Expected {{shared: true}}, got {data}")
-        return False
-    
-    print(f"✅ Response: {data}")
-    
-    # Verify moment created
-    print("\nStep 4: Verify moment in feed")
-    moments_url = f"{BASE_URL}/moments"
-    resp = requests.get(moments_url, headers=headers_diego)
+    # 3. Get messages and verify last message has room card
+    resp = requests.get(f"{BASE_URL}/chats/{conv_id}/messages", headers=mei_headers)
+    print(f"\n3. GET /api/chats/{conv_id}/messages → {resp.status_code}")
     
     if resp.status_code != 200:
-        print(f"❌ FAILED: GET /api/moments failed with {resp.status_code}")
+        print(f"   ❌ Expected 200, got {resp.status_code}")
+        return False
+    
+    messages = resp.json()
+    if not messages:
+        print(f"   ❌ No messages found")
+        return False
+    
+    last_msg = messages[-1]
+    
+    # Verify message type
+    if last_msg.get("type") != "room":
+        print(f"   ❌ Expected type='room', got {repr(last_msg.get('type'))}")
+        return False
+    print(f"   ✅ Message type is 'room'")
+    
+    # Verify room field
+    print(f"\n4. Verify message.room shape:")
+    
+    room = last_msg.get("room")
+    if not room:
+        print(f"   ❌ message.room is missing")
+        return False
+    
+    # Same shape as moments room card
+    required_fields = {
+        "id": str,
+        "title": str,
+        "is_live": bool,
+        "background": int,
+        "topic": str,
+        "is_private": bool,
+        "language": str,
+        "created_at": str,
+        "member_count": int,
+        "host": dict,
+        "members_preview": list
+    }
+    
+    for field, expected_type in required_fields.items():
+        value = room.get(field)
+        if value is None and field not in room:
+            print(f"   ❌ room.{field} is missing")
+            return False
+        if value is not None and not isinstance(value, expected_type):
+            print(f"   ❌ room.{field} has wrong type: expected {expected_type}, got {type(value)}")
+            return False
+        print(f"   ✅ room.{field} = {repr(value)[:80]}")
+    
+    # Verify host object
+    host = room.get("host")
+    if not host or not host.get("id") or not host.get("name") or "avatar_url" not in host:
+        print(f"   ❌ host object incomplete")
+        return False
+    print(f"   ✅ host object complete")
+    
+    # Verify members_preview
+    members_preview = room.get("members_preview")
+    if not isinstance(members_preview, list) or len(members_preview) < 2:
+        print(f"   ❌ members_preview should have at least 2 members")
+        return False
+    print(f"   ✅ members_preview has {len(members_preview)} members")
+    
+    print(f"\n✅ TEST C PASSED")
+    return True
+
+def test_d_moment_tag_sanitization():
+    """D) Moment tag sanitization"""
+    print("\n" + "="*80)
+    print("TEST D: Moment tag sanitization")
+    print("="*80)
+    
+    mei_token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
+    if not mei_token:
+        return False
+    
+    mei_headers = {"Authorization": f"Bearer {mei_token}"}
+    
+    # 1. Create moment with various tag formats
+    tags_input = ["language", "#Grammar", "Studying_Hard", "  ", "meet@new"]
+    moment_data = {
+        "text": "Hi",
+        "tags": tags_input
+    }
+    
+    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=mei_headers)
+    print(f"\n1. POST /api/moments with tags={tags_input} → {resp.status_code}")
+    
+    if resp.status_code != 201:
+        print(f"   ❌ Expected 201, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+        return False
+    
+    moment = resp.json()
+    moment_id = moment.get("id")
+    
+    # 2. Verify response.tags
+    tags_output = moment.get("tags")
+    expected_tags = ["language", "grammar", "studying_hard", "meetnew"]
+    
+    print(f"\n2. Verify tag sanitization:")
+    print(f"   Input:    {tags_input}")
+    print(f"   Output:   {tags_output}")
+    print(f"   Expected: {expected_tags}")
+    
+    if tags_output != expected_tags:
+        print(f"   ❌ Tags don't match expected output")
+        print(f"   Expected: {expected_tags}")
+        print(f"   Got:      {tags_output}")
+        return False
+    
+    print(f"   ✅ Tag sanitization correct:")
+    print(f"      - 'language' → 'language' (unchanged)")
+    print(f"      - '#Grammar' → 'grammar' (# stripped, lowercase)")
+    print(f"      - 'Studying_Hard' → 'studying_hard' (lowercase, underscore kept)")
+    print(f"      - '  ' → dropped (empty after strip)")
+    print(f"      - 'meet@new' → 'meetnew' (@ stripped)")
+    
+    # 3. Verify via GET /api/moments
+    resp = requests.get(f"{BASE_URL}/moments", headers=mei_headers)
+    print(f"\n3. GET /api/moments → {resp.status_code}")
+    
+    if resp.status_code != 200:
+        print(f"   ❌ Expected 200, got {resp.status_code}")
         return False
     
     moments = resp.json()
-    
-    # Find moment with matching text, room.id, and author.id
-    found = False
-    for moment in moments:
-        if (moment.get("text") == "This is awesome" and 
-            moment.get("room", {}).get("id") == room_id and 
-            moment.get("author", {}).get("id") == diego_id):
-            found = True
-            print(f"✅ Found moment in feed:")
-            print(f"   - text: {moment['text']}")
-            print(f"   - room.id: {moment['room']['id']}")
-            print(f"   - author.id: {moment['author']['id']}")
+    found_moment = None
+    for m in moments:
+        if m.get("id") == moment_id:
+            found_moment = m
             break
     
-    if not found:
-        print(f"❌ FAILED: Moment not found in feed")
-        print(f"   Looking for: text='This is awesome', room.id={room_id}, author.id={diego_id}")
+    if not found_moment:
+        print(f"   ❌ Could not find moment with id={moment_id}")
         return False
     
-    print(f"✅ SCENARIO 2 PASSED")
+    if found_moment.get("tags") != expected_tags:
+        print(f"   ❌ Tags in GET response don't match")
+        print(f"   Expected: {expected_tags}")
+        print(f"   Got:      {found_moment.get('tags')}")
+        return False
+    
+    print(f"   ✅ Tags persist correctly in GET response")
+    
+    print(f"\n✅ TEST D PASSED")
     return True
 
-
-def test_scenario_3_share_without_caption(room_id, mei_token, mei_id):
-    """
-    Scenario 3: Share without caption (empty body or {})
-    - Login mei
-    - POST /api/rooms/{room_id}/share-to-moments with empty body
-    - Expect 201
-    - GET /api/moments — the newly-created moment's text auto-generated (starts with 🎙️ and contains room title)
-    """
+def test_e_tag_limit():
+    """E) Tag limit (9+ tags rejected)"""
     print("\n" + "="*80)
-    print("SCENARIO 3: Share without caption (empty body)")
+    print("TEST E: Tag limit (9+ tags rejected)")
     print("="*80)
     
-    print(f"Step 1: Share room {room_id} with empty body")
-    share_url = f"{BASE_URL}/rooms/{room_id}/share-to-moments"
-    headers = {"Authorization": f"Bearer {mei_token}"}
-    
-    # Get moments count before
-    moments_url = f"{BASE_URL}/moments"
-    resp = requests.get(moments_url, headers=headers)
-    moments_before = resp.json()
-    count_before = len(moments_before)
-    
-    # Share with empty body
-    resp = requests.post(share_url, json={}, headers=headers)
-    
-    if resp.status_code != 201:
-        print(f"❌ FAILED: Expected 201, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
+    mei_token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
+    if not mei_token:
         return False
     
-    print(f"✅ POST /api/rooms/{room_id}/share-to-moments returned 201")
+    mei_headers = {"Authorization": f"Bearer {mei_token}"}
     
-    data = resp.json()
-    if data.get("shared") is not True:
-        print(f"❌ FAILED: Expected {{shared: true}}, got {data}")
-        return False
-    
-    print(f"✅ Response: {data}")
-    
-    # Verify moment created with auto-generated text
-    print("\nStep 2: Verify moment with auto-generated text")
-    resp = requests.get(moments_url, headers=headers)
-    moments_after = resp.json()
-    count_after = len(moments_after)
-    
-    if count_after <= count_before:
-        print(f"❌ FAILED: No new moment created (before: {count_before}, after: {count_after})")
-        return False
-    
-    # Find the newest moment for this room by mei
-    newest_moment = None
-    for moment in moments_after:
-        room = moment.get("room")
-        author = moment.get("author")
-        if (room and room.get("id") == room_id and 
-            author and author.get("id") == mei_id):
-            if newest_moment is None or moment.get("created_at", "") > newest_moment.get("created_at", ""):
-                newest_moment = moment
-    
-    if not newest_moment:
-        print(f"❌ FAILED: No moment found for room.id={room_id}, author.id={mei_id}")
-        return False
-    
-    text = newest_moment.get("text", "")
-    
-    # Check auto-generated text starts with 🎙️ and contains room title
-    if not text.startswith("🎙️"):
-        print(f"❌ FAILED: Auto-generated text should start with 🎙️, got: {text}")
-        return False
-    
-    if "Round 15 Test" not in text:
-        print(f"❌ FAILED: Auto-generated text should contain room title 'Round 15 Test', got: {text}")
-        return False
-    
-    print(f"✅ Found moment with auto-generated text:")
-    print(f"   - text: {text}")
-    print(f"   - Starts with 🎙️: ✅")
-    print(f"   - Contains room title: ✅")
-    
-    print(f"✅ SCENARIO 3 PASSED")
-    return True
-
-
-def test_scenario_4_private_room_refuses():
-    """
-    Scenario 4: Private room refuses
-    - Login mei, create private room
-    - POST /api/rooms/{priv_id}/share-to-moments with body {"text":"try"}
-    - Expect 400 with detail "Private rooms can't be shared"
-    """
-    print("\n" + "="*80)
-    print("SCENARIO 4: Private room refuses")
-    print("="*80)
-    
-    # Login mei
-    print("Step 1: Login mei@demo.com")
-    mei_token, mei_id = login_user("mei@demo.com", "Demo1234!")
-    print(f"✅ Logged in as mei")
-    
-    # Create private room
-    print("\nStep 2: Create private room")
-    create_url = f"{BASE_URL}/rooms"
-    headers = {"Authorization": f"Bearer {mei_token}"}
-    room_data = {
-        "title": "Secret",
-        "language": "en",
-        "topic": "General",
-        "mode": "chat",
-        "is_private": True
+    # Try to create moment with 9 tags (should fail with 422)
+    tags_input = ["a", "b", "c", "d", "e", "f", "g", "h", "i"]
+    moment_data = {
+        "text": "too many",
+        "tags": tags_input
     }
-    resp = requests.post(create_url, json=room_data, headers=headers)
     
-    if resp.status_code != 201:
-        print(f"❌ FAILED: Private room creation failed with {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    room = resp.json()
-    priv_id = room["id"]
-    print(f"✅ Created private room: {priv_id}")
-    
-    # Try to share private room
-    print("\nStep 3: Try to share private room")
-    share_url = f"{BASE_URL}/rooms/{priv_id}/share-to-moments"
-    share_body = {"text": "try"}
-    resp = requests.post(share_url, json=share_body, headers=headers)
-    
-    if resp.status_code != 400:
-        print(f"❌ FAILED: Expected 400, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    print(f"✅ POST /api/rooms/{priv_id}/share-to-moments returned 400")
-    
-    data = resp.json()
-    detail = data.get("detail", "")
-    
-    if detail != "Private rooms can't be shared":
-        print(f"❌ FAILED: Expected detail 'Private rooms can't be shared', got: {detail}")
-        return False
-    
-    print(f"✅ Response detail: {detail}")
-    
-    print(f"✅ SCENARIO 4 PASSED")
-    return True
-
-
-def test_scenario_5_unknown_room():
-    """
-    Scenario 5: Unknown room
-    - POST /api/rooms/nonexistent-id-12345/share-to-moments {}
-    - Expect 404
-    """
-    print("\n" + "="*80)
-    print("SCENARIO 5: Unknown room")
-    print("="*80)
-    
-    # Login mei
-    print("Step 1: Login mei@demo.com")
-    mei_token, mei_id = login_user("mei@demo.com", "Demo1234!")
-    print(f"✅ Logged in as mei")
-    
-    # Try to share unknown room
-    print("\nStep 2: Try to share unknown room")
-    share_url = f"{BASE_URL}/rooms/nonexistent-id-12345/share-to-moments"
-    headers = {"Authorization": f"Bearer {mei_token}"}
-    resp = requests.post(share_url, json={}, headers=headers)
-    
-    if resp.status_code != 404:
-        print(f"❌ FAILED: Expected 404, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    print(f"✅ POST /api/rooms/nonexistent-id-12345/share-to-moments returned 404")
-    
-    print(f"✅ SCENARIO 5 PASSED")
-    return True
-
-
-def test_scenario_6_text_validation():
-    """
-    Scenario 6: Text validation
-    - POST /api/rooms/{room_id}/share-to-moments with body {"text": "a"*600} (over 500 chars)
-    - Expect 422 (pydantic validation)
-    """
-    print("\n" + "="*80)
-    print("SCENARIO 6: Text validation (over 500 chars)")
-    print("="*80)
-    
-    # Login mei
-    print("Step 1: Login mei@demo.com")
-    mei_token, mei_id = login_user("mei@demo.com", "Demo1234!")
-    print(f"✅ Logged in as mei")
-    
-    # Create public room
-    print("\nStep 2: Create public room")
-    create_url = f"{BASE_URL}/rooms"
-    headers = {"Authorization": f"Bearer {mei_token}"}
-    room_data = {
-        "title": "Validation Test",
-        "language": "en",
-        "topic": "General",
-        "mode": "chat",
-        "is_private": False
-    }
-    resp = requests.post(create_url, json=room_data, headers=headers)
-    
-    if resp.status_code != 201:
-        print(f"❌ FAILED: Room creation failed with {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    room = resp.json()
-    room_id = room["id"]
-    print(f"✅ Created room: {room_id}")
-    
-    # Try to share with text over 500 chars
-    print("\nStep 3: Try to share with text over 500 chars")
-    share_url = f"{BASE_URL}/rooms/{room_id}/share-to-moments"
-    long_text = "a" * 600
-    share_body = {"text": long_text}
-    resp = requests.post(share_url, json=share_body, headers=headers)
+    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=mei_headers)
+    print(f"\n1. POST /api/moments with 9 tags → {resp.status_code}")
+    print(f"   Tags: {tags_input}")
     
     if resp.status_code != 422:
-        print(f"❌ FAILED: Expected 422, got {resp.status_code}")
+        print(f"   ❌ Expected 422 (validation error), got {resp.status_code}")
         print(f"   Response: {resp.text}")
         return False
     
-    print(f"✅ POST /api/rooms/{room_id}/share-to-moments returned 422")
+    print(f"   ✅ 9 tags correctly rejected with 422 (Pydantic max_length validation)")
     
-    data = resp.json()
-    print(f"✅ Validation error: {data}")
-    
-    print(f"✅ SCENARIO 6 PASSED")
+    print(f"\n✅ TEST E PASSED")
     return True
 
+def test_f_announcement_length_limit():
+    """F) Announcement length limit"""
+    print("\n" + "="*80)
+    print("TEST F: Announcement length limit")
+    print("="*80)
+    
+    mei_token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
+    if not mei_token:
+        return False
+    
+    mei_headers = {"Authorization": f"Bearer {mei_token}"}
+    
+    # Try to create room with 400-char announcement (max is 300)
+    long_announcement = "a" * 400
+    room_data = {
+        "title": "Test Room",
+        "language": "en",
+        "announcement": long_announcement
+    }
+    
+    resp = requests.post(f"{BASE_URL}/rooms", json=room_data, headers=mei_headers)
+    print(f"\n1. POST /api/rooms with 400-char announcement → {resp.status_code}")
+    print(f"   Announcement length: {len(long_announcement)} chars (max is 300)")
+    
+    if resp.status_code != 422:
+        print(f"   ❌ Expected 422 (validation error), got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+        return False
+    
+    print(f"   ✅ 400-char announcement correctly rejected with 422 (Pydantic max_length validation)")
+    
+    print(f"\n✅ TEST F PASSED")
+    return True
+
+def test_g_backward_compatibility():
+    """G) Backward compatibility"""
+    print("\n" + "="*80)
+    print("TEST G: Backward compatibility")
+    print("="*80)
+    
+    mei_token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
+    if not mei_token:
+        return False
+    
+    mei_headers = {"Authorization": f"Bearer {mei_token}"}
+    
+    # 1. Create moment without tags
+    moment_data = {"text": "plain post"}
+    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=mei_headers)
+    print(f"\n1. POST /api/moments without tags → {resp.status_code}")
+    
+    if resp.status_code != 201:
+        print(f"   ❌ Expected 201, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+        return False
+    
+    moment = resp.json()
+    tags = moment.get("tags")
+    
+    if tags != []:
+        print(f"   ❌ Expected tags=[], got {repr(tags)}")
+        return False
+    
+    print(f"   ✅ Moment without tags returns tags=[]")
+    
+    # 2. Create room without announcement
+    room_data = {
+        "title": "No Announcement Room",
+        "language": "en"
+    }
+    resp = requests.post(f"{BASE_URL}/rooms", json=room_data, headers=mei_headers)
+    print(f"\n2. POST /api/rooms without announcement → {resp.status_code}")
+    
+    if resp.status_code != 201:
+        print(f"   ❌ Expected 201, got {resp.status_code}")
+        print(f"   Response: {resp.text}")
+        return False
+    
+    room = resp.json()
+    announcement = room.get("announcement")
+    
+    if announcement is not None:
+        print(f"   ❌ Expected announcement=null, got {repr(announcement)}")
+        return False
+    
+    print(f"   ✅ Room without announcement returns announcement=null")
+    
+    print(f"\n✅ TEST G PASSED")
+    return True
 
 def main():
     print("\n" + "="*80)
-    print("BACKEND TEST: Share-to-Moments Endpoint Update (Round 15)")
+    print("ROUND 16 BACKEND TESTING")
     print("="*80)
     print(f"Backend URL: {BASE_URL}")
-    print(f"Test Date: {datetime.now().isoformat()}")
-    print("\nTesting 2 key changes:")
-    print("1. Any authenticated user (not just host) can share to moments")
-    print("2. Body accepts optional {text} for custom caption")
+    print(f"Test users: {MEI_EMAIL}, {DIEGO_EMAIL}")
     
-    results = []
+    results = {}
     
-    # Scenario 1: Host shares with caption
-    result = test_scenario_1_host_shares_with_caption()
-    if isinstance(result, tuple):
-        test1_passed, room_id, mei_token, mei_id = result
-        results.append(("Scenario 1: Host shares with caption", test1_passed))
+    # Test A: Room create with announcement + background
+    room_id = test_a_room_create_with_announcement_background()
+    results["A"] = bool(room_id)
+    
+    if room_id:
+        # Test B: Shared room card via moments
+        results["B"] = test_b_shared_room_card_via_moments(room_id)
+        
+        # Test C: Shared room card via chat
+        results["C"] = test_c_shared_room_card_via_chat(room_id)
     else:
-        test1_passed = False
-        results.append(("Scenario 1: Host shares with caption", False))
-        room_id = None
-        mei_token = None
-        mei_id = None
+        results["B"] = False
+        results["C"] = False
     
-    # Scenario 2: Audience shares with caption (only if scenario 1 passed)
-    if test1_passed and room_id and mei_token:
-        results.append(("Scenario 2: Audience shares with caption", test_scenario_2_audience_shares_with_caption(room_id, mei_token)))
-    else:
-        print("\n⚠️  Skipping scenario 2 because scenario 1 failed")
-        results.append(("Scenario 2: Audience shares with caption", False))
+    # Test D: Moment tag sanitization
+    results["D"] = test_d_moment_tag_sanitization()
     
-    # Scenario 3: Share without caption (only if scenario 1 passed)
-    if test1_passed and room_id and mei_token and mei_id:
-        results.append(("Scenario 3: Share without caption", test_scenario_3_share_without_caption(room_id, mei_token, mei_id)))
-    else:
-        print("\n⚠️  Skipping scenario 3 because scenario 1 failed")
-        results.append(("Scenario 3: Share without caption", False))
+    # Test E: Tag limit
+    results["E"] = test_e_tag_limit()
     
-    # Scenario 4: Private room refuses
-    results.append(("Scenario 4: Private room refuses", test_scenario_4_private_room_refuses()))
+    # Test F: Announcement length limit
+    results["F"] = test_f_announcement_length_limit()
     
-    # Scenario 5: Unknown room
-    results.append(("Scenario 5: Unknown room", test_scenario_5_unknown_room()))
-    
-    # Scenario 6: Text validation
-    results.append(("Scenario 6: Text validation", test_scenario_6_text_validation()))
+    # Test G: Backward compatibility
+    results["G"] = test_g_backward_compatibility()
     
     # Summary
     print("\n" + "="*80)
-    print("TEST SUMMARY")
+    print("SUMMARY")
     print("="*80)
     
-    passed = sum(1 for _, result in results if result)
+    passed = sum(1 for v in results.values() if v)
     total = len(results)
     
-    for name, result in results:
+    for test, result in results.items():
         status = "✅ PASSED" if result else "❌ FAILED"
-        print(f"{status}: {name}")
+        print(f"Test {test}: {status}")
     
-    print(f"\nTotal: {passed}/{total} scenarios passed")
+    print(f"\nTotal: {passed}/{total} tests passed")
     
     if passed == total:
         print("\n🎉 ALL TESTS PASSED!")
         return 0
     else:
-        print(f"\n⚠️  {total - passed} scenario(s) failed")
+        print(f"\n⚠️  {total - passed} test(s) failed")
         return 1
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

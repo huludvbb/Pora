@@ -134,8 +134,12 @@ export interface RoomCardInfo {
   mode?: "chat" | "music";
   language?: string;
   languages?: string[];
+  is_private?: boolean;
+  background?: number | null;
   member_count?: number;
+  members_preview?: User[];
   host?: User | null;
+  created_at?: string;
   is_live: boolean;
 }
 
@@ -145,6 +149,7 @@ export interface Moment {
   text: string;
   image_url?: string | null;
   room?: RoomCardInfo | null;
+  tags?: string[];
   like_count: number;
   liked_by_me: boolean;
   likers?: User[];
@@ -205,6 +210,7 @@ export interface Room {
   mode?: "chat" | "music";
   is_private?: boolean;
   background?: number | null;
+  announcement?: string | null;
   host: User | null;
   host_level?: number;
   is_live?: boolean;

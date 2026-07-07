@@ -64,6 +64,7 @@ class MomentCreate(BaseModel):
     text: str = Field(default="", max_length=1000)
     image_base64: Optional[str] = None
     mime: str = "image/jpeg"
+    tags: Optional[list[str]] = Field(default=None, max_length=8)
 
 
 class CommentCreate(BaseModel):
@@ -101,6 +102,7 @@ class RoomCreate(BaseModel):
     is_private: bool = False
     background: Optional[int] = Field(default=None, ge=0, le=3)
     share_to_moments: bool = False
+    announcement: Optional[str] = Field(default=None, max_length=300)
 
 
 class RoomRoleUpdate(BaseModel):

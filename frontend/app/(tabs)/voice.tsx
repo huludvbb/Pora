@@ -85,6 +85,7 @@ export default function Voice() {
   const [topic, setTopic] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [background, setBackground] = useState(0);
+  const [announcement, setAnnouncement] = useState("");
   const [shareToMoments, setShareToMoments] = useState(true);
 
   // Room languages come from the user's own languages (native + teach + learning).
@@ -138,6 +139,7 @@ export default function Voice() {
     setTopic(null);
     setIsPrivate(false);
     setBackground(0);
+    setAnnouncement("");
     setShareToMoments(true);
   };
 
@@ -154,6 +156,7 @@ export default function Voice() {
         mode,
         is_private: isPrivate,
         background,
+        announcement: announcement.trim() || null,
         share_to_moments: shareToMoments && !isPrivate,
       });
       setModalOpen(false);
@@ -341,6 +344,23 @@ export default function Voice() {
                 maxLength={80}
                 multiline
               />
+
+              <View style={styles.announceHeaderRow}>
+                <Ionicons name="megaphone" size={15} color={colors.brand} />
+                <Text style={styles.announceLabel}>Announcement</Text>
+                <Text style={styles.announceHint}>Optional</Text>
+              </View>
+              <TextInput
+                testID="room-announcement-input"
+                style={styles.announceInput}
+                placeholder="Pin a welcome message — house rules, today's topic, or a warm hello. Guests see it right away."
+                placeholderTextColor={colors.onSurfaceSecondary}
+                value={announcement}
+                onChangeText={setAnnouncement}
+                maxLength={300}
+                multiline
+              />
+              <Text style={styles.announceCounter}>{announcement.length}/300</Text>
 
               <Text style={styles.sectionLabel}>
                 Language ({roomLangs.length}/2)

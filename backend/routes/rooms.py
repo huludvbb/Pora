@@ -85,6 +85,7 @@ async def room_detail(doc: dict) -> dict:
         "mode": doc.get("mode", "chat"),
         "is_private": bool(doc.get("is_private")),
         "background": doc.get("background"),
+        "announcement": doc.get("announcement"),
         "host": user_card(host) if host else None,
         "host_level": max(1, (host or {}).get("streak_count") or 1),
         "is_live": doc["is_live"],
@@ -215,6 +216,7 @@ async def create_room(body: RoomCreate, current_user: CurrentUser):
         "mode": body.mode,
         "is_private": body.is_private,
         "background": body.background,
+        "announcement": (body.announcement or "").strip() or None,
         "host_id": current_user["_id"],
         "is_live": True,
         "members": {

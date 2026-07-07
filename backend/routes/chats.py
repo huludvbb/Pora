@@ -39,9 +39,10 @@ async def _push_new_message(partner_id: str, muted: bool, sender_name: str, prev
 
 
 async def _room_share_card(room_id: str | None) -> dict | None:
-    """Live snapshot of a voice room for a chat card — matches Moments card shape.
-    Includes host so the card can render host avatar + name inline. Computed at
-    read-time so it always reflects whether the room is still ongoing."""
+    """Live snapshot of a voice room for a chat card — matches the voice-tab
+    list card shape exactly so every embedded room card looks identical:
+    gradient background, LIVE bars, language flag, topic, host row and
+    member preview. Computed at read-time so is_live is always accurate."""
     if not room_id:
         return None
     room_doc = await rooms_col.find_one({"_id": room_id})
@@ -53,13 +54,25 @@ async def _room_share_card(room_id: str | None) -> dict | None:
         host_doc = await users_col.find_one({"_id": host_id})
         if host_doc:
             host_card = user_card(host_doc)
+    member_ids = list(room_doc.get("members", {}).keys())
+    preview_ids = member_ids[:4]
+    preview_docs = (
+        await users_col.find({"_id": {"$in": preview_ids}}).to_list(len(preview_ids))
+        if preview_ids
+        else []
+    )
+    members_preview = [user_card(u) for u in preview_docs]
     if not room_doc.get("is_live"):
         return {
             "id": room_id,
             "title": room_doc.get("title"),
             "topic": room_doc.get("topic"),
             "language": room_doc.get("language"),
+            "background": room_doc.get("background"),
             "host": host_card,
+            "members_preview": members_preview,
+            "member_count": len(member_ids),
+            "created_at": room_doc.get("created_at"),
             "is_live": False,
         }
     return {
@@ -69,8 +82,12 @@ async def _room_share_card(room_id: str | None) -> dict | None:
         "mode": room_doc.get("mode", "chat"),
         "language": room_doc["language"],
         "languages": room_doc.get("languages") or [room_doc["language"]],
-        "member_count": len(room_doc.get("members", {})),
+        "is_private": bool(room_doc.get("is_private")),
+        "background": room_doc.get("background"),
+        "member_count": len(member_ids),
+        "members_preview": members_preview,
         "host": host_card,
+        "created_at": room_doc.get("created_at"),
         "is_live": True,
     }
 

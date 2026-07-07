@@ -68,12 +68,29 @@ def _card_with_presence(author: dict | None) -> dict | None:
 
 async def _room_card(room_id: str | None) -> dict | None:
     """Live snapshot of a shared voice room for a moment card — computed at
-    read-time so it always reflects whether the room is still ongoing."""
+    read-time so it always reflects whether the room is still ongoing.
+    Shape matches the voice-room list card so shared/embedded cards look
+    identical everywhere: host, member preview, gradient background, topic,
+    private flag, created_at for the "X min ago" line."""
     if not room_id:
         return None
     room_doc = await rooms_col.find_one({"_id": room_id})
     if not room_doc:
         return {"id": room_id, "is_live": False}
+    host_card = None
+    host_id = room_doc.get("host_id")
+    if host_id:
+        host_doc = await users_col.find_one({"_id": host_id})
+        if host_doc:
+            host_card = user_card(host_doc)
+    member_ids = list(room_doc.get("members", {}).keys())
+    preview_ids = member_ids[:4]
+    preview_docs = (
+        await users_col.find({"_id": {"$in": preview_ids}}).to_list(len(preview_ids))
+        if preview_ids
+        else []
+    )
+    members_preview = [user_card(u) for u in preview_docs]
     if not room_doc.get("is_live"):
         # Room has ended — keep the title/topic so the card stays meaningful.
         return {
@@ -81,6 +98,11 @@ async def _room_card(room_id: str | None) -> dict | None:
             "title": room_doc.get("title"),
             "topic": room_doc.get("topic"),
             "language": room_doc.get("language"),
+            "background": room_doc.get("background"),
+            "host": host_card,
+            "members_preview": members_preview,
+            "member_count": len(member_ids),
+            "created_at": room_doc.get("created_at"),
             "is_live": False,
         }
     return {
@@ -90,7 +112,12 @@ async def _room_card(room_id: str | None) -> dict | None:
         "mode": room_doc.get("mode", "chat"),
         "language": room_doc["language"],
         "languages": room_doc.get("languages") or [room_doc["language"]],
-        "member_count": len(room_doc.get("members", {})),
+        "is_private": bool(room_doc.get("is_private")),
+        "background": room_doc.get("background"),
+        "member_count": len(member_ids),
+        "members_preview": members_preview,
+        "host": host_card,
+        "created_at": room_doc.get("created_at"),
         "is_live": True,
     }
 
@@ -117,6 +144,7 @@ async def moment_public(doc: dict, viewer_id: str, author: dict | None = None) -
         "text": doc["text"],
         "image_url": f"/api/media/{doc['image_id']}" if doc.get("image_id") else None,
         "room": await _room_card(doc.get("room_id")),
+        "tags": doc.get("tags", []) or [],
         "like_count": len(likes),
         "liked_by_me": viewer_id in likes,
         "likers": likers,
@@ -147,6 +175,7 @@ async def list_moments(current_user: CurrentUser, user_id: str | None = None):
                 "text": 1,
                 "image_id": 1,
                 "room_id": 1,
+                "tags": 1,
                 "likes": 1,
                 "comment_count": 1,
                 "created_at": 1,
@@ -202,11 +231,23 @@ async def create_moment(body: MomentCreate, current_user: CurrentUser):
         await media_col.insert_one(
             {"_id": image_id, "data": image_bytes, "mime": body.mime}
         )
+    # Sanitize tags: lowercase, strip #, dedupe, cap length.
+    tags: list[str] = []
+    if body.tags:
+        seen: set[str] = set()
+        for raw in body.tags:
+            t = (raw or "").strip().lstrip("#").lower()
+            # keep letters/numbers/underscore only — no spaces or punctuation
+            t = "".join(ch for ch in t if ch.isalnum() or ch == "_")
+            if 1 <= len(t) <= 30 and t not in seen:
+                seen.add(t)
+                tags.append(t)
     doc = {
         "_id": str(uuid.uuid4()),
         "user_id": current_user["_id"],
         "text": body.text.strip(),
         "image_id": image_id,
+        "tags": tags,
         "likes": [],
         "comment_count": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),

@@ -41,6 +41,10 @@ const QUICK_REPLIES = [
 // Solid, uniform room backgrounds (single colour top-to-bottom so the
 // device status bar area blends in and stays readable).
 const BG_COLORS: string[] = ["#413389", "#1E293B", "#4A1D6E", "#153A44"];
+// Slightly deeper tones of BG_COLORS — used for surfaces that overlay the
+// main room background (like the 3-dot switcher panel) so they feel part of
+// the room instead of being an out-of-place pitch-black sheet.
+const PANEL_BG_COLORS: string[] = ["#2E2461", "#131B29", "#331349", "#0C2229"];
 
 const STAGE_SEATS = 8;
 const MAX_LISTENERS_SHOWN = 6;
@@ -1103,7 +1107,17 @@ export default function RoomScreen() {
               style={styles.switcherBackdrop}
               onPress={() => setMenuOpen(false)}
             />
-            <View style={styles.switcherPanel}>
+            <View
+              style={[
+                styles.switcherPanel,
+                {
+                  backgroundColor:
+                    PANEL_BG_COLORS[
+                      (room?.background ?? bgIndex) % PANEL_BG_COLORS.length
+                    ],
+                },
+              ]}
+            >
               <SafeAreaView edges={["top"]} style={{ flex: 1 }}>
                 <View style={styles.switcherIconRow}>
                   <Pressable
@@ -2289,7 +2303,8 @@ const makeStyles = () =>
     switcherPanel: {
       width: "62%",
       maxWidth: 280,
-      backgroundColor: "#111119",
+      // Fallback — the runtime style overrides this with a room-specific tint.
+      backgroundColor: "#2E2461",
       paddingHorizontal: spacing.md,
     },
     switcherIconRow: {

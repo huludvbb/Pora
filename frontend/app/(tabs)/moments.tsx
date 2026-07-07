@@ -360,7 +360,7 @@ export default function Moments() {
       <Pressable
         testID="moment-create-fab"
         style={styles.fab}
-        onPress={() => setComposerOpen(true)}
+        onPress={() => router.push("/moment-compose")}
       >
         <Ionicons name="create" size={24} color={colors.onBrand} />
       </Pressable>

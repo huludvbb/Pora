@@ -27,9 +27,9 @@ import { FlagIcon } from "@/src/components/FlagIcon";
 import { countryToCode } from "@/src/constants/countries";
 import { useAuth } from "@/src/context/AuthContext";
 import { useCall } from "@/src/context/CallContext";
-import { useRoomAudio } from "@/src/hooks/use-room-audio";
+import { useRoomSession } from "@/src/context/RoomSessionContext";
 import { fonts, radius, spacing } from "@/src/theme";
-import { api, Room, RoomGift, RoomMember, RoomMessage } from "@/src/utils/api";
+import { api, Conversation, Room, RoomGift, RoomMember, RoomMessage } from "@/src/utils/api";
 
 const QUICK_REPLIES = [
   "Hey, everyone! 👋",
@@ -49,7 +49,7 @@ export default function RoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, setUser } = useAuth();
-  const { sendSignal, subscribe } = useCall();
+  const { subscribe } = useCall();
   const styles = makeStyles();
   const [room, setRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
@@ -58,6 +58,12 @@ export default function RoomScreen() {
   const [bgIndex, setBgIndex] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [switcherRooms, setSwitcherRooms] = useState<Room[]>([]);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+  const [exitSheetOpen, setExitSheetOpen] = useState(false);
+  const [hostPickOpen, setHostPickOpen] = useState(false);
+  const [chatPickOpen, setChatPickOpen] = useState(false);
+  const [chatList, setChatList] = useState<Conversation[]>([]);
+  const [sharingChatId, setSharingChatId] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [handModalOpen, setHandModalOpen] = useState(false);
   const [audienceModalOpen, setAudienceModalOpen] = useState(false);
@@ -86,13 +92,19 @@ export default function RoomScreen() {
   const isSpeaker = isHost || me?.role === "speaker";
   const host = room?.host || null;
 
-  useRoomAudio({
-    roomId: id!,
-    myId: user?.id || "",
-    members,
-    sendSignal,
-    subscribe,
-  });
+  // Audio now lives in the root RoomSession (survives minimize/navigation).
+  const session = useRoomSession();
+  const endedRef = useRef(false);
+
+  // Register this room as the active session; on unmount, minimize (keep the
+  // audio alive as a floating bubble) unless we explicitly left/closed.
+  useEffect(() => {
+    if (id) session.startSession(id);
+    return () => {
+      if (!endedRef.current) session.minimize();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const load = useCallback(async () => {
     try {
@@ -101,6 +113,7 @@ export default function RoomScreen() {
         api.get<RoomMessage[]>(`/rooms/${id}/messages`),
       ]);
       setRoom(r);
+      session.updateRoom(r);
       setMessages(msgs);
       if (r.host && r.host.id !== user?.id) {
         try {
@@ -113,6 +126,8 @@ export default function RoomScreen() {
         }
       }
     } catch {
+      endedRef.current = true;
+      session.endSession();
       router.back();
     } finally {
       setLoading(false);
@@ -141,6 +156,7 @@ export default function RoomScreen() {
     const unsub = subscribe((event: any) => {
       if (event.type === "room_update" && event.room?.id === id) {
         setRoom(event.room);
+        session.updateRoom(event.room);
         if (event.joined && event.joined.id !== user?.id) {
           const key = `${event.joined.id}-${Date.now()}`;
           setJoinAnnouncement({
@@ -180,6 +196,8 @@ export default function RoomScreen() {
         }
       } else if (event.type === "room_ended" && event.room_id === id) {
         Alert.alert("Room ended", "The host has ended this room.");
+        endedRef.current = true;
+        session.endSession();
         router.back();
       }
     });
@@ -192,8 +210,11 @@ export default function RoomScreen() {
     }
   }, [messages.length]);
 
+  // Non-host leaves the room entirely (host uses the transfer flow / Close).
   const leave = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    endedRef.current = true;
+    session.endSession();
     try {
       await api.post(`/rooms/${id}/leave`);
     } finally {
@@ -201,11 +222,61 @@ export default function RoomScreen() {
     }
   };
 
+  // Host permanently closes the room for everyone.
+  const closeRoom = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    endedRef.current = true;
+    session.endSession();
+    try {
+      await api.post(`/rooms/${id}/end`);
+    } catch {
+      // ignore
+    } finally {
+      router.back();
+    }
+  };
+
+  // Host hands the room to a chosen member, then leaves (room stays live).
+  const transferHostAndLeave = async (member: RoomMember) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setHostPickOpen(false);
+    endedRef.current = true;
+    try {
+      await api.post(`/rooms/${id}/transfer-host`, { user_id: member.id });
+      await api.post(`/rooms/${id}/leave`);
+    } catch (e) {
+      endedRef.current = false;
+      Alert.alert(
+        "Couldn't hand over",
+        e instanceof Error ? e.message : "Please try again.",
+      );
+      return;
+    }
+    session.endSession();
+    router.back();
+  };
+
+  // Host taps Leave: must promote a new host first if others are present.
+  const hostLeaveFlow = () => {
+    setExitSheetOpen(false);
+    const others = members.filter((m) => m.id !== user?.id);
+    if (others.length === 0) {
+      Alert.alert(
+        "No one to hand over to",
+        "You're alone here. Use Close to end the room instead.",
+      );
+      return;
+    }
+    setHostPickOpen(true);
+  };
+
   // Switch to another recommended room: leave the current one, then open the new.
   const switchRoom = async (roomId: string) => {
     setMenuOpen(false);
     if (!roomId || roomId === id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    endedRef.current = true;
+    session.endSession();
     try {
       await api.post(`/rooms/${id}/leave`);
     } catch {
@@ -214,10 +285,12 @@ export default function RoomScreen() {
     router.replace(`/room/${roomId}`);
   };
 
-  // Minimize: keep membership, just pop back to the previous screen.
+  // Minimize: keep membership + audio, collapse to a floating bubble.
   const minimizeRoom = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setMenuOpen(false);
+    setExitSheetOpen(false);
+    session.minimize();
     router.back();
   };
 
@@ -300,6 +373,7 @@ export default function RoomScreen() {
     try {
       await api.post(`/rooms/${id}/share-to-moments`);
       setToolsOpen(false);
+      setShareMenuOpen(false);
       Alert.alert(
         "Shared to Moments! 🎉",
         "Your room is now visible in your Moments feed so more people can join.",
@@ -309,6 +383,40 @@ export default function RoomScreen() {
         "Share",
         e instanceof Error ? e.message : "Could not share this room right now.",
       );
+    }
+  };
+
+  // Share to Chat: pick one of my conversations and drop a room invite in it.
+  const openShareToChat = async () => {
+    setShareMenuOpen(false);
+    try {
+      const convos = await api.get<Conversation[]>("/chats");
+      setChatList(convos.filter((c) => !!c.partner));
+      setChatPickOpen(true);
+    } catch {
+      Alert.alert("Share to Chat", "Could not load your chats right now.");
+    }
+  };
+
+  const sendRoomToChat = async (conv: Conversation) => {
+    if (sharingChatId) return;
+    setSharingChatId(conv.id);
+    try {
+      await api.post(`/chats/${conv.id}/messages`, {
+        text: `🎙️ Join my live voice room "${room?.title}" on LinguaConnect!`,
+      });
+      setChatPickOpen(false);
+      Alert.alert(
+        "Invite sent! 🎉",
+        `Your room invite was sent to ${conv.partner?.name || "the chat"}.`,
+      );
+    } catch (e) {
+      Alert.alert(
+        "Share to Chat",
+        e instanceof Error ? e.message : "Could not send the invite.",
+      );
+    } finally {
+      setSharingChatId(null);
     }
   };
 
@@ -1015,10 +1123,7 @@ export default function RoomScreen() {
                   <Pressable
                     testID="room-switcher-share-btn"
                     style={styles.switcherIconBtn}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      shareInvite();
-                    }}
+                    onPress={() => setShareMenuOpen(true)}
                   >
                     <Ionicons name="share-outline" size={22} color="#FFFFFF" />
                   </Pressable>
@@ -1034,12 +1139,9 @@ export default function RoomScreen() {
                     />
                   </Pressable>
                   <Pressable
-                    testID="room-leave-btn"
+                    testID="room-power-btn"
                     style={styles.switcherIconBtn}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      leave();
-                    }}
+                    onPress={() => setExitSheetOpen(true)}
                   >
                     <Ionicons name="power" size={21} color="#FFFFFF" />
                   </Pressable>
@@ -1100,6 +1202,230 @@ export default function RoomScreen() {
               </SafeAreaView>
             </View>
           </View>
+        </Modal>
+
+        {/* Exit action sheet (opened by the Power icon) */}
+        <Modal
+          visible={exitSheetOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setExitSheetOpen(false)}
+        >
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={() => setExitSheetOpen(false)}
+          >
+            <View style={styles.actionSheetWrap}>
+              <View style={styles.actionSheet}>
+                <Pressable
+                  testID="exit-share-btn"
+                  style={styles.actionSheetRow}
+                  onPress={() => {
+                    setExitSheetOpen(false);
+                    setShareMenuOpen(true);
+                  }}
+                >
+                  <Text style={styles.actionSheetText}>Share</Text>
+                </Pressable>
+                <View style={styles.actionSheetDivider} />
+                <Pressable
+                  testID="exit-minimize-btn"
+                  style={styles.actionSheetRow}
+                  onPress={minimizeRoom}
+                >
+                  <Text style={styles.actionSheetText}>Minimize the room</Text>
+                </Pressable>
+                <View style={styles.actionSheetDivider} />
+                <Pressable
+                  testID="exit-leave-btn"
+                  style={styles.actionSheetRow}
+                  onPress={() => {
+                    if (isHost) {
+                      hostLeaveFlow();
+                    } else {
+                      setExitSheetOpen(false);
+                      leave();
+                    }
+                  }}
+                >
+                  <Text style={styles.actionSheetText}>Leave</Text>
+                </Pressable>
+                {isHost && (
+                  <>
+                    <View style={styles.actionSheetDivider} />
+                    <Pressable
+                      testID="exit-close-btn"
+                      style={styles.actionSheetRow}
+                      onPress={() => {
+                        setExitSheetOpen(false);
+                        closeRoom();
+                      }}
+                    >
+                      <Text
+                        style={[styles.actionSheetText, styles.actionSheetDanger]}
+                      >
+                        Close
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+              <Pressable
+                testID="exit-cancel-btn"
+                style={styles.actionSheetCancel}
+                onPress={() => setExitSheetOpen(false)}
+              >
+                <Text style={styles.actionSheetCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Share submenu: Share to Chat / Share to Moments */}
+        <Modal
+          visible={shareMenuOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShareMenuOpen(false)}
+        >
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={() => setShareMenuOpen(false)}
+          >
+            <View style={styles.actionSheetWrap}>
+              <View style={styles.actionSheet}>
+                <Pressable
+                  testID="share-to-chat-btn"
+                  style={styles.actionSheetRow}
+                  onPress={openShareToChat}
+                >
+                  <Text style={styles.actionSheetText}>Share to Chat</Text>
+                </Pressable>
+                <View style={styles.actionSheetDivider} />
+                <Pressable
+                  testID="share-to-moments-btn"
+                  style={styles.actionSheetRow}
+                  onPress={shareToMoments}
+                >
+                  <Text style={styles.actionSheetText}>Share to Moments</Text>
+                </Pressable>
+              </View>
+              <Pressable
+                style={styles.actionSheetCancel}
+                onPress={() => setShareMenuOpen(false)}
+              >
+                <Text style={styles.actionSheetCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Host picks a member to hand the room over to, then leaves */}
+        <Modal
+          visible={hostPickOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setHostPickOpen(false)}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setHostPickOpen(false)}
+          >
+            <View style={styles.menuSheet}>
+              <Text style={styles.menuTitle}>Choose a new host</Text>
+              <Text style={styles.pickerSub}>
+                Pick someone to take over so the room keeps going.
+              </Text>
+              <ScrollView style={{ maxHeight: 320 }}>
+                {members
+                  .filter((m) => m.id !== user?.id)
+                  .map((m) => (
+                    <Pressable
+                      key={m.id}
+                      testID={`host-pick-${m.id}`}
+                      style={styles.pickerRow}
+                      onPress={() => transferHostAndLeave(m)}
+                    >
+                      <Avatar
+                        name={m.name}
+                        url={m.avatar_url}
+                        size={40}
+                        flagCode={countryToCode(m.country)}
+                      />
+                      <View style={{ flex: 1, marginLeft: spacing.md }}>
+                        <Text style={styles.pickerName} numberOfLines={1}>
+                          {m.name}
+                        </Text>
+                        <Text style={styles.pickerRole}>
+                          {m.role === "speaker" ? "Speaker" : "Listener"}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color="rgba(255,255,255,0.5)"
+                      />
+                    </Pressable>
+                  ))}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Share to Chat: pick a conversation */}
+        <Modal
+          visible={chatPickOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setChatPickOpen(false)}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setChatPickOpen(false)}
+          >
+            <View style={styles.menuSheet}>
+              <Text style={styles.menuTitle}>Share to Chat</Text>
+              {chatList.length === 0 ? (
+                <Text style={styles.pickerSub}>
+                  You have no chats yet. Say hi to a partner first!
+                </Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 340 }}>
+                  {chatList.map((c) => (
+                    <Pressable
+                      key={c.id}
+                      testID={`share-chat-${c.id}`}
+                      style={styles.pickerRow}
+                      onPress={() => sendRoomToChat(c)}
+                      disabled={!!sharingChatId}
+                    >
+                      <Avatar
+                        name={c.partner?.name}
+                        url={c.partner?.avatar_url}
+                        size={40}
+                        flagCode={countryToCode(c.partner?.country)}
+                      />
+                      <Text
+                        style={[styles.pickerName, { flex: 1, marginLeft: spacing.md }]}
+                        numberOfLines={1}
+                      >
+                        {c.partner?.name}
+                      </Text>
+                      {sharingChatId === c.id ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Ionicons
+                          name="paper-plane"
+                          size={16}
+                          color="#7C6BF0"
+                        />
+                      )}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          </Pressable>
         </Modal>
 
         <Modal
@@ -2040,6 +2366,71 @@ const makeStyles = () =>
       fontSize: 12,
       color: "rgba(255,255,255,0.5)",
       marginLeft: 4,
+    },
+    sheetBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "flex-end",
+      paddingHorizontal: spacing.md,
+    },
+    actionSheetWrap: {
+      paddingBottom: spacing.xl,
+      gap: spacing.sm,
+    },
+    actionSheet: {
+      backgroundColor: "#2A2A32",
+      borderRadius: radius.lg,
+      overflow: "hidden",
+    },
+    actionSheetRow: {
+      paddingVertical: 17,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    actionSheetText: {
+      fontFamily: fonts.textSemi,
+      fontSize: 17,
+      color: "#FFFFFF",
+    },
+    actionSheetDanger: {
+      color: "#F87171",
+    },
+    actionSheetDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: "rgba(255,255,255,0.12)",
+    },
+    actionSheetCancel: {
+      backgroundColor: "#7C6BF0",
+      borderRadius: radius.lg,
+      paddingVertical: 16,
+      alignItems: "center",
+    },
+    actionSheetCancelText: {
+      fontFamily: fonts.textBold,
+      fontSize: 17,
+      color: "#FFFFFF",
+    },
+    pickerSub: {
+      fontFamily: fonts.text,
+      fontSize: 13,
+      color: "rgba(255,255,255,0.6)",
+      marginBottom: spacing.sm,
+    },
+    pickerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: spacing.sm + 2,
+    },
+    pickerName: {
+      fontFamily: fonts.textBold,
+      fontSize: 15,
+      color: "#FFFFFF",
+    },
+    pickerRole: {
+      fontFamily: fonts.text,
+      fontSize: 12,
+      color: "rgba(255,255,255,0.5)",
+      marginTop: 2,
     },
     giftSheet: {
       backgroundColor: "#2A2154",

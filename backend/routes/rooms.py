@@ -335,6 +335,48 @@ async def change_role(room_id: str, body: RoomRoleUpdate, current_user: CurrentU
     return {"ok": True}
 
 
+@router.post("/{room_id}/transfer-host")
+async def transfer_host(
+    room_id: str, body: RoomUserAction, current_user: CurrentUser
+):
+    """Host hands the room over to another member and stays live.
+
+    The current host is demoted to speaker and the chosen member becomes the
+    new host (host_id + role updated). Used so the host can leave without
+    ending the room (HelloTalk style)."""
+    doc = await get_live_room(room_id)
+    old_host = current_user["_id"]
+    if doc["host_id"] != old_host:
+        raise HTTPException(status_code=403, detail="Only the host can transfer the room")
+    if body.user_id == old_host:
+        raise HTTPException(status_code=400, detail="You are already the host")
+    new_member = doc["members"].get(body.user_id)
+    if not new_member:
+        raise HTTPException(status_code=404, detail="Member not in room")
+
+    # Promote the chosen member to host, demote the previous host to speaker.
+    new_member["role"] = "host"
+    new_member["mic_on"] = True
+    new_member["hand_raised"] = False
+    doc["members"][body.user_id] = new_member
+    if old_host in doc["members"]:
+        doc["members"][old_host]["role"] = "speaker"
+    doc["host_id"] = body.user_id
+
+    await rooms_col.update_one(
+        {"_id": room_id},
+        {
+            "$set": {
+                "host_id": body.user_id,
+                f"members.{body.user_id}": new_member,
+                f"members.{old_host}.role": "speaker",
+            }
+        },
+    )
+    await broadcast_room(doc)
+    return await room_detail(doc)
+
+
 @router.post("/{room_id}/kick")
 async def kick_member(room_id: str, body: RoomUserAction, current_user: CurrentUser):
     """Host removes (and bans) a member from the room — HelloTalk style."""

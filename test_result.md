@@ -1115,3 +1115,54 @@ agent_communication:
     - agent: "testing"
       message: "✅ ALL 3 UI FIXES VERIFIED (3/3 passed). Tested on mobile viewport (390x844) with mei@demo.com. TEST 1 (MOST IMPORTANT) - Chat scrolling fix ✅: (A) Chat opens pinned at BOTTOM showing newest message 'Reply 12 from Diego' without manual scrolling. (B) Scrolled up to middle messages (7-10 visible), waited 3 seconds, list stayed in place with NO auto-jump to bottom. (C) While scrolled up, typed and sent 'hello scroll test', list immediately snapped to bottom showing new message. All three scroll behaviors working correctly. TEST 2 - Connect page ✅: NO 'PHRASE OF THE DAY' gradient card present. Partner list starts directly with 6 partner cards. Daily Phrase card successfully removed. TEST 3 - Profile preview ✅: Emma Wilson's profile shows OLD column style language section: EN code with green underline + 'English' label below (native), swap arrow, JA/KO codes with proficiency dots (4-5px circles) + 'Japanese'/'Korean' labels below. Text small and tidy (11.5px/9.5px). NOT pill/chip style with flag icons. Stats card shows labeled cells: Streak, Moments, Followers, Following, Learning, Badges. Console: only minor warning 'props.pointerEvents is deprecated' (non-blocking). NO CRITICAL ISSUES FOUND. All UI fixes working as specified."
 
+
+## Test Run — Voice Room Exit Drawer + Persistent Minimize + Host Transfer
+user_problem_statement: New voice-room controls. Three-dot opens a right drawer (Recommended rooms + Share/Minimize/Power icons). Share icon -> submenu (Share to Chat / Share to Moments). Power icon -> bottom action sheet (Share / Minimize the room / Leave / Close[host only] / Cancel). Host Leave requires promoting an audience member to host first (room stays live). Close ends room. Minimize collapses to a floating bubble at root with audio persisting; tapping reopens the room.
+
+backend:
+  - task: "POST /api/rooms/{room_id}/transfer-host - host hands room to a member, stays live"
+    implemented: true
+    working: true
+    file: "backend/routes/rooms.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "New endpoint: only host (403 otherwise). Promotes target to role=host + host_id, demotes old host to speaker, broadcasts room_update, returns room_detail. Curl-verified: non-host->403; mei transfers to diego (diego becomes host, mei speaker); mei then leaves and room stays is_live=true with diego as host."
+        - working: true
+          agent: "testing"
+          comment: "✅ ALL TESTS PASSED (8/8). Comprehensive testing completed with mei@demo.com (host) and diego@demo.com (member). Test results: (1) ✅ Room creation and join - mei creates room, diego joins successfully. (2) ✅ Non-host authorization - diego calling transfer-host returns 403 'Only the host can transfer the room'. (3) ✅ Non-existent user - transfer to fake user_id returns 404 'Member not in room'. (4) ✅ Self-transfer validation - mei transferring to self returns 400 'You are already the host'. (5) ✅ Successful transfer - mei transfers to diego, response shows host is Diego (d1148299-3b96-493d-9391-5f67a4277c8f), diego has role='host', mei has role='speaker'. (6) ✅ Room continuity - mei leaves after transfer, room remains is_live=true with diego as host. (7) ✅ Regression: Host leave without transfer - mei creates new room, leaves as sole host, room ends (404 returned, expected behavior). (8) ✅ Regression: POST /api/rooms/{id}/end - host can still end room directly, returns {ok:true}, room becomes inaccessible (expected, GET only returns live rooms). All authorization checks, role updates, and room state transitions working correctly."
+
+frontend:
+  - task: "Voice room three-dot drawer, share submenu, exit action sheet, minimize float bubble, host transfer flow"
+    implemented: true
+    working: true
+    file: "frontend/app/room/[id].tsx, frontend/src/context/RoomSessionContext.tsx, frontend/app/_layout.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Verified via screenshots: (1) three-dot opens right drawer with Recommended live rooms + Share/Minimize/Power icons; tapping a recommended room switches rooms. (2) Share icon -> submenu Share to Chat (chat picker sends invite message) / Share to Moments. (3) Power icon -> bottom sheet Share/Minimize the room/Leave/(Close host-only)/Cancel. (4) Minimize -> navigates back, floating LIVE bubble at root over other tabs; tapping bubble reopens the room. Audio moved to root RoomSessionProvider (AudioSessionHost) so it survives navigation/minimize. (5) Host Leave opens 'choose a new host' picker -> transfer-host + leave (room continues); Close calls /end."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.14"
+  test_sequence: 14
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: "Please test the new backend endpoint POST /api/rooms/{room_id}/transfer-host. Use mei@demo.com / Demo1234! (host) and diego@demo.com / Demo1234! (member). Scenarios: (1) mei creates a room; diego joins. (2) Non-host (diego) calls transfer-host -> expect 403 'Only the host can transfer the room'. (3) Transfer to a non-member id -> 404. (4) mei transfers to diego -> 200, response host is Diego, diego role=host, mei role=speaker. (5) mei calls /leave -> room stays is_live=true with diego as host (GET /api/rooms/{id} confirms). (6) transfer to self (mei) -> 400. Also smoke test that existing /leave for host with no transfer still ends the room, and /end still works. Do NOT test frontend (already verified via screenshots)."
+    - agent: "testing"
+      message: "✅ ALL BACKEND TESTS PASSED (8/8). POST /api/rooms/{room_id}/transfer-host endpoint fully functional. Test summary: (1) ✅ Room creation and join working. (2) ✅ Non-host gets 403 'Only the host can transfer the room'. (3) ✅ Transfer to non-existent user returns 404 'Member not in room'. (4) ✅ Transfer to self returns 400 'You are already the host'. (5) ✅ Successful transfer: mei→diego, host becomes Diego, diego role='host', mei role='speaker'. (6) ✅ Room continues after old host leaves: is_live=true, host=diego. (7) ✅ Regression: Host leaving without transfer ends room (404). (8) ✅ Regression: POST /api/rooms/{id}/end works correctly. All authorization checks, role updates, and room state transitions working correctly. No critical issues found. Ready for main agent to summarize and finish."
+

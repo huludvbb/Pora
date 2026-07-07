@@ -21,6 +21,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/src/context/AuthContext";
 import { CallProvider } from "@/src/context/CallContext";
 import { NotificationsProvider } from "@/src/context/NotificationsContext";
+import { RoomSessionProvider } from "@/src/context/RoomSessionContext";
 import { ThemeProvider, useTheme } from "@/src/context/ThemeContext";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { Notifications, pushSupported } from "@/src/utils/push-native";
@@ -54,8 +55,10 @@ function ThemedApp() {
     <AuthProvider>
       <NotificationsProvider>
         <CallProvider>
-          <StatusBar style={mode === "dark" ? "light" : "dark"} />
-          <Stack screenOptions={{ headerShown: false }} />
+          <RoomSessionProvider>
+            <StatusBar style={mode === "dark" ? "light" : "dark"} />
+            <Stack screenOptions={{ headerShown: false }} />
+          </RoomSessionProvider>
         </CallProvider>
       </NotificationsProvider>
     </AuthProvider>

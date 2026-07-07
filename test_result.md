@@ -1765,3 +1765,55 @@ agent_communication:
       message: "Round 17 backend: POST /api/moments accepts poll; POST /api/moments/{id}/vote. Please test: (A) Login mei, POST /api/moments {text:'Favorite drink?', poll:{options:[{text:'Coffee'},{text:'Tea'},{text:'Water'}]}} → 201. Response.poll.options.length=3, each has text+votes=0, total_votes=0, my_vote=null. (B) POST /api/moments/{id}/vote {option_index:0} (mei votes for Coffee) → 200. Response.poll.options[0].votes=1, my_vote=0, total_votes=1. (C) mei revotes {option_index:2} → 200. options[0].votes=0, options[2].votes=1, my_vote=2, total_votes=1 (still one vote). (D) Diego logs in, votes {option_index:2} → 200. options[2].votes=2, total_votes=2, my_vote=2 (from diego's POV). GET as mei → my_vote still 2 for mei, total_votes=2. (E) Vote on non-existent moment → 404. (F) Vote on moment without poll → 400. (G) option_index=99 → 422. (H) Create moment with only 1 poll option → 422 (Pydantic min_length). (I) Create moment with poll AND no text AND no image → 201 (poll counts as content). (J) Backward compat: POST /api/moments {text:'x'} (no poll) → 201, response.poll=null. Don't test frontend."
     - agent: "testing"
       message: "✅ ROUND 17 BACKEND TESTING COMPLETED - ALL 11 TESTS PASSED (11/11). Poll feature on Moments fully functional. Test results: (A) ✅ Create moment with 3-option poll (Coffee/Tea/Water) returns 201 with correct poll structure (options.length=3, each option has text+votes=0, total_votes=0, my_vote=null). (B) ✅ Vote for option 0 (Coffee) returns 200 with options[0].votes=1, my_vote=0, total_votes=1. (C) ✅ Revote for option 2 (Water) returns 200 with options[0].votes=0 (vote moved from Coffee), options[2].votes=1, my_vote=2, total_votes=1 (still 1, not 2 - one vote per user logic working). (D) ✅ Diego votes for option 2 returns 200 with options[2].votes=2, total_votes=2. GET as Mei confirms my_vote=2, total_votes=2 (both users on option 2). (E) ✅ Vote on non-existent moment returns 404. (F) ✅ Vote on moment without poll returns 400 with detail 'This moment has no poll'. (G) ✅ Vote with option_index=99 returns 422 (Pydantic ge/le validation). (H) ✅ Create moment with only 1 poll option returns 422 (Pydantic min_length=2). (I) ✅ Create moment with poll only (no text, no image) returns 201 (poll counts as content). (J) ✅ Backward compat: moment without poll returns poll=null. (K) ✅ GET /api/moments returns poll field correctly in list. NO CRITICAL ISSUES FOUND. All poll creation, voting, revoting, validation, and backward compatibility working perfectly. Ready for main agent to summarize and finish."
+
+## Bug Fix (Round 17b) — Poll not showing in Moment Detail page
+user_problem_statement: "Poll কিন্তু পোস্ট ডিটেলসে দেখাচ্ছে না সেটি ঠিক করতে হবে" — Poll wasn't displayed on the single moment detail page (/moment/[id]).
+
+backend:
+  - task: "GET /api/moments/{id} returns poll field correctly"
+    implemented: true
+    working: true
+    file: "backend/routes/moments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Verified via curl: creating a moment with poll then GET /moments/{id} returns {poll:{question, options:[{text,votes}], total_votes, my_vote}, tags:[]} correctly. Root cause of the bug was purely frontend — the detail page didn't render poll/tags."
+        - working: true
+          agent: "testing"
+          comment: "✅ ALL 6 TESTS PASSED (6/6). Round 17b bug fix verification complete. TEST A ✅: Created moment with poll (Pizza or Burger?) returns 201 with moment ID. TEST B ✅: GET /api/moments/{id} returns 200 with complete poll object - verified: question=null, options array has exactly 2 items (Pizza/Burger), each option has text (string) + votes (int, both 0), total_votes=0, my_vote=null, tags field present (empty array), comments field present (empty array). All poll structure requirements met. TEST C ✅: POST /api/moments/{id}/vote with option_index=1 returns 200. GET /api/moments/{id} again returns 200 with updated poll - verified: my_vote=1, options[1].votes=1 (Burger), options[0].votes=0 (Pizza), total_votes=1. Vote tracking working correctly. TEST D ✅: Regression check - created moment with just text 'just text' returns 201. GET /api/moments/{plain_id} returns 200 with poll=null (or absent), text='just text', response has expected structure (id, author fields present). No crash on moments without poll. TEST E ✅: Regression check - GET /api/moments (list endpoint) returns 200 with 34 moments. Found both test moments in list: poll moment has poll with 2 options, plain moment has null/absent poll. List endpoint returns poll field correctly. TEST F ✅: Regression check - created moment with only poll (no text) returns 201. GET /api/moments/{new_id} returns 200 with poll present (2 options A/B), text is empty string. Poll-only moments work correctly. NO CRITICAL ISSUES FOUND. Backend poll field implementation is fully functional across all scenarios: single moment GET, voting, moments without poll, list endpoint, poll-only moments. Bug fix verified - GET /api/moments/{id} returns poll field correctly with all required fields (question, options with text+votes, total_votes, my_vote, tags, comments)."
+
+frontend:
+  - task: "Moment detail page renders poll + tags"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/moment/[id].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added the same poll (tap-to-vote with animated progress bars) and tag chip row rendering that was already in the moments tab. Vote handler is optimistic and preserves loaded comments. testIDs: moment-detail-poll, moment-detail-poll-option-{i}."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.17"
+  test_sequence: 16
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "GET /api/moments/{id} returns poll field correctly (bug fix verification)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+
+agent_communication:
+    - agent: "main"
+      message: "Round 17b: Fixed the reported bug — moment detail page (GET /moments/{id}) already returned poll data correctly on backend, but the frontend detail screen was missing the render block. Please verify backend once more: (A) Login mei, POST /api/moments with poll (2 opts) → 201, grab id. (B) GET /api/moments/{id} → 200, response must include full poll object {question, options:[{text,votes}], total_votes, my_vote} AND tags field. (C) POST /api/moments/{id}/vote {option_index:1} → 200 poll updated. (D) GET /api/moments/{id} again → my_vote==1, options[1].votes==1. Regression check: (E) GET /api/moments/{id} for moment WITHOUT poll → returns poll:null (or absent) — no crash. (F) GET /api/moments list still returns poll for each moment as before. Don't test frontend."
+    - agent: "testing"
+      message: "✅ ROUND 17B BUG FIX VERIFICATION COMPLETE - ALL TESTS PASSED (6/6). Backend poll field implementation is fully functional. Test summary: TEST A ✅ - Created moment with poll (Pizza or Burger?) returns 201 with moment ID. TEST B ✅ - GET /api/moments/{id} returns 200 with complete poll object verified: question=null, options array has exactly 2 items (Pizza/Burger), each option has text (string) + votes (int, both 0), total_votes=0, my_vote=null, tags field present (empty array), comments field present (empty array). All poll structure requirements met. TEST C ✅ - POST /api/moments/{id}/vote with option_index=1 returns 200. GET /api/moments/{id} again returns 200 with updated poll verified: my_vote=1, options[1].votes=1 (Burger), options[0].votes=0 (Pizza), total_votes=1. Vote tracking working correctly. TEST D ✅ - Regression check: created moment with just text 'just text' returns 201. GET /api/moments/{plain_id} returns 200 with poll=null (or absent), text='just text', response has expected structure. No crash on moments without poll. TEST E ✅ - Regression check: GET /api/moments (list endpoint) returns 200 with 34 moments. Found both test moments in list: poll moment has poll with 2 options, plain moment has null/absent poll. List endpoint returns poll field correctly. TEST F ✅ - Regression check: created moment with only poll (no text) returns 201. GET /api/moments/{new_id} returns 200 with poll present (2 options A/B), text is empty string. Poll-only moments work correctly. NO CRITICAL ISSUES FOUND. Backend GET /api/moments/{id} returns poll field correctly with all required fields across all scenarios (single moment GET, voting, moments without poll, list endpoint, poll-only moments). Bug fix verified successfully. Ready for main agent to summarize and finish."

@@ -1,23 +1,12 @@
 #!/usr/bin/env python3
 """
-Round 17 Backend Testing - Poll Feature on Moments
-Tests for:
-A) Create moment with 3-option poll
-B) Vote for option 0 (Coffee)
-C) Revote for option 2 (Water) - one vote per user
-D) Diego also votes for option 2
-E) Vote on non-existent moment
-F) Vote on moment without poll
-G) Vote with out-of-range option
-H) Create moment with only 1 poll option (invalid)
-I) Create moment with poll but no text no image (poll counts as content)
-J) Backward compat - no poll field
-K) GET /api/moments returns poll in list
+Round 17b — Backend Test: GET /api/moments/{id} returns poll field correctly
+Bug fix verification for poll field in single moment endpoint.
 """
 
 import requests
 import sys
-from datetime import datetime
+from typing import Optional
 
 # Backend URL from frontend/.env
 BASE_URL = "https://23e89f0c-4dcc-40fe-82d2-2e242a0a0207.preview.emergentagent.com/api"
@@ -25,700 +14,588 @@ BASE_URL = "https://23e89f0c-4dcc-40fe-82d2-2e242a0a0207.preview.emergentagent.c
 # Test credentials
 MEI_EMAIL = "mei@demo.com"
 MEI_PASSWORD = "Demo1234!"
-DIEGO_EMAIL = "diego@demo.com"
-DIEGO_PASSWORD = "Demo1234!"
 
-def login(email, password):
-    """Login and return token + user data"""
-    resp = requests.post(f"{BASE_URL}/auth/login", json={"email": email, "password": password})
-    if resp.status_code != 200:
-        print(f"❌ Login failed for {email}: {resp.status_code} {resp.text}")
-        return None, None
-    data = resp.json()
-    return data.get("token"), data.get("user")
-
-def test_a_create_moment_with_poll():
-    """A) Create moment with 3-option poll"""
-    print("\n" + "="*80)
-    print("TEST A: Create moment with 3-option poll")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return None
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Create moment with poll
-    moment_data = {
-        "text": "Favorite drink?",
-        "poll": {
-            "options": [
-                {"text": "Coffee"},
-                {"text": "Tea"},
-                {"text": "Water"}
-            ]
-        }
-    }
-    
-    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=headers)
-    print(f"\n1. POST /api/moments with poll → {resp.status_code}")
-    
-    if resp.status_code != 201:
-        print(f"   ❌ Expected 201, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return None
-    
-    moment = resp.json()
-    moment_id = moment.get("id")
-    print(f"   ✅ Moment created with ID: {moment_id}")
-    
-    # 2. Verify response.poll structure
-    print(f"\n2. Verify response.poll:")
-    
-    poll = moment.get("poll")
-    if not poll:
-        print(f"   ❌ poll field is missing")
-        return None
-    
-    # Check options length
-    options = poll.get("options")
-    if not options or len(options) != 3:
-        print(f"   ❌ Expected 3 options, got {len(options) if options else 0}")
-        return None
-    print(f"   ✅ options.length = 3")
-    
-    # Check each option
-    expected_texts = ["Coffee", "Tea", "Water"]
-    for i, (opt, expected_text) in enumerate(zip(options, expected_texts)):
-        text = opt.get("text")
-        votes = opt.get("votes")
+class TestRunner:
+    def __init__(self):
+        self.mei_token: Optional[str] = None
+        self.passed = 0
+        self.failed = 0
+        self.test_moments = []  # Track created moments for cleanup context
         
-        if text != expected_text:
-            print(f"   ❌ options[{i}].text: expected '{expected_text}', got '{text}'")
+    def log(self, message: str, level: str = "INFO"):
+        """Log test messages"""
+        prefix = {
+            "INFO": "ℹ️",
+            "PASS": "✅",
+            "FAIL": "❌",
+            "STEP": "🔹"
+        }.get(level, "•")
+        print(f"{prefix} {message}")
+        
+    def login_mei(self) -> bool:
+        """Login as mei@demo.com"""
+        self.log("Logging in as mei@demo.com...", "STEP")
+        try:
+            response = requests.post(
+                f"{BASE_URL}/auth/login",
+                json={"email": MEI_EMAIL, "password": MEI_PASSWORD},
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                self.mei_token = data.get("token")
+                self.log(f"Login successful. Token: {self.mei_token[:20]}...", "PASS")
+                return True
+            else:
+                self.log(f"Login failed: {response.status_code} - {response.text}", "FAIL")
+                return False
+        except Exception as e:
+            self.log(f"Login exception: {e}", "FAIL")
+            return False
+            
+    def test_a_create_moment_with_poll(self) -> Optional[str]:
+        """A) Create moment with poll"""
+        self.log("\n=== TEST A: Create moment with poll ===", "INFO")
+        
+        try:
+            response = requests.post(
+                f"{BASE_URL}/moments",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                json={
+                    "text": "Pizza or Burger?",
+                    "poll": {
+                        "options": [
+                            {"text": "Pizza"},
+                            {"text": "Burger"}
+                        ]
+                    }
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 201:
+                data = response.json()
+                moment_id = data.get("id")
+                self.test_moments.append(moment_id)
+                self.log(f"POST /api/moments → 201 ✓", "PASS")
+                self.log(f"Moment ID: {moment_id}", "INFO")
+                self.passed += 1
+                return moment_id
+            else:
+                self.log(f"POST /api/moments → {response.status_code} (expected 201)", "FAIL")
+                self.log(f"Response: {response.text}", "FAIL")
+                self.failed += 1
+                return None
+        except Exception as e:
+            self.log(f"Exception creating moment: {e}", "FAIL")
+            self.failed += 1
             return None
+            
+    def test_b_get_single_moment_returns_poll(self, moment_id: str) -> bool:
+        """B) GET single moment returns poll"""
+        self.log("\n=== TEST B: GET single moment returns poll ===", "INFO")
         
-        if votes != 0:
-            print(f"   ❌ options[{i}].votes: expected 0, got {votes}")
-            return None
+        try:
+            response = requests.get(
+                f"{BASE_URL}/moments/{moment_id}",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                self.log(f"GET /api/moments/{moment_id} → {response.status_code} (expected 200)", "FAIL")
+                self.failed += 1
+                return False
+                
+            data = response.json()
+            self.log(f"GET /api/moments/{moment_id} → 200 ✓", "PASS")
+            
+            # Verify poll field is not null
+            if data.get("poll") is None:
+                self.log("FAIL: response.poll is null (expected poll object)", "FAIL")
+                self.failed += 1
+                return False
+            
+            poll = data["poll"]
+            self.log(f"Poll field present: {poll}", "PASS")
+            
+            # Verify poll structure
+            checks = []
+            
+            # Check question (null or string)
+            question = poll.get("question")
+            if question is None or isinstance(question, str):
+                checks.append(("question", True, f"question={question}"))
+            else:
+                checks.append(("question", False, f"question type is {type(question)}, expected null or string"))
+            
+            # Check options (array of exactly 2 items)
+            options = poll.get("options")
+            if not isinstance(options, list):
+                checks.append(("options", False, f"options is not a list: {type(options)}"))
+            elif len(options) != 2:
+                checks.append(("options", False, f"options has {len(options)} items, expected 2"))
+            else:
+                checks.append(("options", True, f"options has 2 items"))
+                
+                # Check each option has text + votes
+                for i, opt in enumerate(options):
+                    if "text" not in opt:
+                        checks.append((f"options[{i}].text", False, "missing text field"))
+                    elif not isinstance(opt["text"], str):
+                        checks.append((f"options[{i}].text", False, f"text is {type(opt['text'])}, expected string"))
+                    else:
+                        checks.append((f"options[{i}].text", True, f"text='{opt['text']}'"))
+                    
+                    if "votes" not in opt:
+                        checks.append((f"options[{i}].votes", False, "missing votes field"))
+                    elif not isinstance(opt["votes"], int):
+                        checks.append((f"options[{i}].votes", False, f"votes is {type(opt['votes'])}, expected int"))
+                    else:
+                        checks.append((f"options[{i}].votes", True, f"votes={opt['votes']}"))
+            
+            # Check total_votes == 0
+            total_votes = poll.get("total_votes")
+            if total_votes == 0:
+                checks.append(("total_votes", True, "total_votes=0"))
+            else:
+                checks.append(("total_votes", False, f"total_votes={total_votes}, expected 0"))
+            
+            # Check my_vote == null
+            my_vote = poll.get("my_vote")
+            if my_vote is None:
+                checks.append(("my_vote", True, "my_vote=null"))
+            else:
+                checks.append(("my_vote", False, f"my_vote={my_vote}, expected null"))
+            
+            # Check tags field is present
+            if "tags" in data:
+                checks.append(("tags", True, f"tags={data['tags']}"))
+            else:
+                checks.append(("tags", False, "tags field missing"))
+            
+            # Check comments field is present
+            if "comments" in data:
+                checks.append(("comments", True, f"comments array present (length={len(data['comments'])})"))
+            else:
+                checks.append(("comments", False, "comments field missing"))
+            
+            # Report all checks
+            all_passed = True
+            for field, passed, msg in checks:
+                if passed:
+                    self.log(f"  ✓ {field}: {msg}", "PASS")
+                else:
+                    self.log(f"  ✗ {field}: {msg}", "FAIL")
+                    all_passed = False
+            
+            if all_passed:
+                self.passed += 1
+                return True
+            else:
+                self.failed += 1
+                return False
+                
+        except Exception as e:
+            self.log(f"Exception getting moment: {e}", "FAIL")
+            self.failed += 1
+            return False
+            
+    def test_c_vote_then_get_again(self, moment_id: str) -> bool:
+        """C) Vote then GET again"""
+        self.log("\n=== TEST C: Vote then GET again ===", "INFO")
         
-        print(f"   ✅ options[{i}]: text='{text}', votes=0")
-    
-    # Check total_votes
-    total_votes = poll.get("total_votes")
-    if total_votes != 0:
-        print(f"   ❌ total_votes: expected 0, got {total_votes}")
-        return None
-    print(f"   ✅ total_votes = 0")
-    
-    # Check my_vote
-    my_vote = poll.get("my_vote")
-    if my_vote is not None:
-        print(f"   ❌ my_vote: expected null, got {my_vote}")
-        return None
-    print(f"   ✅ my_vote = null")
-    
-    print(f"\n✅ TEST A PASSED")
-    return moment_id
-
-def test_b_vote_for_option_0(moment_id):
-    """B) Vote for option 0 (Coffee)"""
-    print("\n" + "="*80)
-    print("TEST B: Vote for option 0 (Coffee)")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Vote for option 0
-    vote_data = {"option_index": 0}
-    resp = requests.post(f"{BASE_URL}/moments/{moment_id}/vote", json=vote_data, headers=headers)
-    print(f"\n1. POST /api/moments/{moment_id}/vote (option_index=0) → {resp.status_code}")
-    
-    if resp.status_code != 200:
-        print(f"   ❌ Expected 200, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    moment = resp.json()
-    
-    # 2. Verify response.poll
-    print(f"\n2. Verify response.poll after voting:")
-    
-    poll = moment.get("poll")
-    if not poll:
-        print(f"   ❌ poll field is missing")
-        return False
-    
-    options = poll.get("options")
-    
-    # Check option 0 votes
-    if options[0].get("votes") != 1:
-        print(f"   ❌ options[0].votes: expected 1, got {options[0].get('votes')}")
-        return False
-    print(f"   ✅ options[0].votes = 1")
-    
-    # Check option 1 votes
-    if options[1].get("votes") != 0:
-        print(f"   ❌ options[1].votes: expected 0, got {options[1].get('votes')}")
-        return False
-    print(f"   ✅ options[1].votes = 0")
-    
-    # Check option 2 votes
-    if options[2].get("votes") != 0:
-        print(f"   ❌ options[2].votes: expected 0, got {options[2].get('votes')}")
-        return False
-    print(f"   ✅ options[2].votes = 0")
-    
-    # Check my_vote
-    my_vote = poll.get("my_vote")
-    if my_vote != 0:
-        print(f"   ❌ my_vote: expected 0, got {my_vote}")
-        return False
-    print(f"   ✅ my_vote = 0")
-    
-    # Check total_votes
-    total_votes = poll.get("total_votes")
-    if total_votes != 1:
-        print(f"   ❌ total_votes: expected 1, got {total_votes}")
-        return False
-    print(f"   ✅ total_votes = 1")
-    
-    print(f"\n✅ TEST B PASSED")
-    return True
-
-def test_c_revote_for_option_2(moment_id):
-    """C) Revote for option 2 (Water) - one vote per user"""
-    print("\n" + "="*80)
-    print("TEST C: Revote for option 2 (Water) - one vote per user")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Revote for option 2
-    vote_data = {"option_index": 2}
-    resp = requests.post(f"{BASE_URL}/moments/{moment_id}/vote", json=vote_data, headers=headers)
-    print(f"\n1. POST /api/moments/{moment_id}/vote (option_index=2) → {resp.status_code}")
-    
-    if resp.status_code != 200:
-        print(f"   ❌ Expected 200, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    moment = resp.json()
-    
-    # 2. Verify response.poll
-    print(f"\n2. Verify response.poll after revoting:")
-    
-    poll = moment.get("poll")
-    if not poll:
-        print(f"   ❌ poll field is missing")
-        return False
-    
-    options = poll.get("options")
-    
-    # Check option 0 votes (should be 0 now, vote moved)
-    if options[0].get("votes") != 0:
-        print(f"   ❌ options[0].votes: expected 0, got {options[0].get('votes')}")
-        return False
-    print(f"   ✅ options[0].votes = 0 (vote moved from Coffee)")
-    
-    # Check option 1 votes
-    if options[1].get("votes") != 0:
-        print(f"   ❌ options[1].votes: expected 0, got {options[1].get('votes')}")
-        return False
-    print(f"   ✅ options[1].votes = 0")
-    
-    # Check option 2 votes (should be 1 now)
-    if options[2].get("votes") != 1:
-        print(f"   ❌ options[2].votes: expected 1, got {options[2].get('votes')}")
-        return False
-    print(f"   ✅ options[2].votes = 1 (vote moved to Water)")
-    
-    # Check my_vote
-    my_vote = poll.get("my_vote")
-    if my_vote != 2:
-        print(f"   ❌ my_vote: expected 2, got {my_vote}")
-        return False
-    print(f"   ✅ my_vote = 2")
-    
-    # Check total_votes (should still be 1, not 2)
-    total_votes = poll.get("total_votes")
-    if total_votes != 1:
-        print(f"   ❌ total_votes: expected 1 (still 1, not 2), got {total_votes}")
-        return False
-    print(f"   ✅ total_votes = 1 (still 1, not 2 - vote moved, not added)")
-    
-    print(f"\n✅ TEST C PASSED")
-    return True
-
-def test_d_diego_votes_option_2(moment_id):
-    """D) Diego also votes for option 2"""
-    print("\n" + "="*80)
-    print("TEST D: Diego also votes for option 2")
-    print("="*80)
-    
-    diego_token, diego_user = login(DIEGO_EMAIL, DIEGO_PASSWORD)
-    if not diego_token:
-        return False
-    
-    diego_headers = {"Authorization": f"Bearer {diego_token}"}
-    
-    # 1. Diego votes for option 2
-    vote_data = {"option_index": 2}
-    resp = requests.post(f"{BASE_URL}/moments/{moment_id}/vote", json=vote_data, headers=diego_headers)
-    print(f"\n1. POST /api/moments/{moment_id}/vote as Diego (option_index=2) → {resp.status_code}")
-    
-    if resp.status_code != 200:
-        print(f"   ❌ Expected 200, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    moment = resp.json()
-    
-    # 2. Verify response.poll from Diego's POV
-    print(f"\n2. Verify response.poll from Diego's POV:")
-    
-    poll = moment.get("poll")
-    if not poll:
-        print(f"   ❌ poll field is missing")
-        return False
-    
-    options = poll.get("options")
-    
-    # Check option 2 votes (should be 2 now: mei + diego)
-    if options[2].get("votes") != 2:
-        print(f"   ❌ options[2].votes: expected 2, got {options[2].get('votes')}")
-        return False
-    print(f"   ✅ options[2].votes = 2 (mei + diego)")
-    
-    # Check total_votes
-    total_votes = poll.get("total_votes")
-    if total_votes != 2:
-        print(f"   ❌ total_votes: expected 2, got {total_votes}")
-        return False
-    print(f"   ✅ total_votes = 2")
-    
-    # Check my_vote from Diego's POV
-    my_vote = poll.get("my_vote")
-    if my_vote != 2:
-        print(f"   ❌ my_vote (Diego's): expected 2, got {my_vote}")
-        return False
-    print(f"   ✅ my_vote = 2 (from Diego's view)")
-    
-    # 3. GET moment as Mei and verify
-    mei_token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    mei_headers = {"Authorization": f"Bearer {mei_token}"}
-    
-    resp = requests.get(f"{BASE_URL}/moments/{moment_id}", headers=mei_headers)
-    print(f"\n3. GET /api/moments/{moment_id} as Mei → {resp.status_code}")
-    
-    if resp.status_code != 200:
-        print(f"   ❌ Expected 200, got {resp.status_code}")
-        return False
-    
-    moment = resp.json()
-    poll = moment.get("poll")
-    
-    # Check my_vote from Mei's POV
-    my_vote = poll.get("my_vote")
-    if my_vote != 2:
-        print(f"   ❌ my_vote (Mei's): expected 2, got {my_vote}")
-        return False
-    print(f"   ✅ my_vote = 2 (from Mei's view)")
-    
-    # Check total_votes
-    total_votes = poll.get("total_votes")
-    if total_votes != 2:
-        print(f"   ❌ total_votes: expected 2, got {total_votes}")
-        return False
-    print(f"   ✅ total_votes = 2 (both mei + diego on option 2)")
-    
-    print(f"\n✅ TEST D PASSED")
-    return True
-
-def test_e_vote_nonexistent_moment():
-    """E) Vote on non-existent moment"""
-    print("\n" + "="*80)
-    print("TEST E: Vote on non-existent moment")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Vote on non-existent moment
-    fake_id = "nonexistent-id-xxx"
-    vote_data = {"option_index": 0}
-    resp = requests.post(f"{BASE_URL}/moments/{fake_id}/vote", json=vote_data, headers=headers)
-    print(f"\n1. POST /api/moments/{fake_id}/vote → {resp.status_code}")
-    
-    if resp.status_code != 404:
-        print(f"   ❌ Expected 404, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    print(f"   ✅ Non-existent moment correctly returns 404")
-    
-    print(f"\n✅ TEST E PASSED")
-    return True
-
-def test_f_vote_moment_without_poll():
-    """F) Vote on moment without poll"""
-    print("\n" + "="*80)
-    print("TEST F: Vote on moment without poll")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Create moment without poll
-    moment_data = {"text": "just text"}
-    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=headers)
-    print(f"\n1. POST /api/moments (no poll) → {resp.status_code}")
-    
-    if resp.status_code != 201:
-        print(f"   ❌ Expected 201, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    moment = resp.json()
-    moment_id = moment.get("id")
-    print(f"   ✅ Moment created without poll, ID: {moment_id}")
-    
-    # 2. Try to vote on it
-    vote_data = {"option_index": 0}
-    resp = requests.post(f"{BASE_URL}/moments/{moment_id}/vote", json=vote_data, headers=headers)
-    print(f"\n2. POST /api/moments/{moment_id}/vote → {resp.status_code}")
-    
-    if resp.status_code != 400:
-        print(f"   ❌ Expected 400, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    # Check error message
-    error_data = resp.json()
-    detail = error_data.get("detail", "")
-    if "no poll" not in detail.lower():
-        print(f"   ❌ Expected error message about 'no poll', got: {detail}")
-        return False
-    
-    print(f"   ✅ Voting on moment without poll returns 400 with detail: '{detail}'")
-    
-    print(f"\n✅ TEST F PASSED")
-    return True
-
-def test_g_vote_out_of_range():
-    """G) Vote with out-of-range option"""
-    print("\n" + "="*80)
-    print("TEST G: Vote with out-of-range option")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Create moment with poll
-    moment_data = {
-        "text": "Test poll",
-        "poll": {
-            "options": [
-                {"text": "A"},
-                {"text": "B"}
-            ]
-        }
-    }
-    
-    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=headers)
-    print(f"\n1. POST /api/moments with 2-option poll → {resp.status_code}")
-    
-    if resp.status_code != 201:
-        print(f"   ❌ Expected 201, got {resp.status_code}")
-        return False
-    
-    moment = resp.json()
-    moment_id = moment.get("id")
-    print(f"   ✅ Moment created with 2 options")
-    
-    # 2. Try to vote with option_index=99
-    vote_data = {"option_index": 99}
-    resp = requests.post(f"{BASE_URL}/moments/{moment_id}/vote", json=vote_data, headers=headers)
-    print(f"\n2. POST /api/moments/{moment_id}/vote (option_index=99) → {resp.status_code}")
-    
-    if resp.status_code != 422:
-        print(f"   ❌ Expected 422 (Pydantic validation), got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    print(f"   ✅ Out-of-range option correctly returns 422 (Pydantic ge/le validation)")
-    
-    print(f"\n✅ TEST G PASSED")
-    return True
-
-def test_h_poll_with_only_1_option():
-    """H) Create moment with only 1 poll option (invalid)"""
-    print("\n" + "="*80)
-    print("TEST H: Create moment with only 1 poll option (invalid)")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Try to create moment with only 1 poll option
-    moment_data = {
-        "text": "bad poll",
-        "poll": {
-            "options": [
-                {"text": "only one"}
-            ]
-        }
-    }
-    
-    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=headers)
-    print(f"\n1. POST /api/moments with 1 poll option → {resp.status_code}")
-    
-    if resp.status_code != 422:
-        print(f"   ❌ Expected 422 (Pydantic min_length validation), got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    print(f"   ✅ 1-option poll correctly rejected with 422 (Pydantic min_length=2)")
-    
-    print(f"\n✅ TEST H PASSED")
-    return True
-
-def test_i_poll_without_text_or_image():
-    """I) Create moment with poll but no text no image (poll counts as content)"""
-    print("\n" + "="*80)
-    print("TEST I: Create moment with poll but no text no image (poll counts as content)")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Create moment with poll only (no text, no image)
-    moment_data = {
-        "poll": {
-            "options": [
-                {"text": "A"},
-                {"text": "B"}
-            ]
-        }
-    }
-    
-    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=headers)
-    print(f"\n1. POST /api/moments with poll only (no text, no image) → {resp.status_code}")
-    
-    if resp.status_code != 201:
-        print(f"   ❌ Expected 201 (poll counts as content), got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    moment = resp.json()
-    poll = moment.get("poll")
-    
-    if not poll:
-        print(f"   ❌ poll field is missing")
-        return False
-    
-    print(f"   ✅ Moment with poll only created successfully (poll counts as content)")
-    
-    print(f"\n✅ TEST I PASSED")
-    return True
-
-def test_j_backward_compat_no_poll():
-    """J) Backward compat - no poll field"""
-    print("\n" + "="*80)
-    print("TEST J: Backward compat - no poll field")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Create moment without poll
-    moment_data = {"text": "hi"}
-    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=headers)
-    print(f"\n1. POST /api/moments (no poll field) → {resp.status_code}")
-    
-    if resp.status_code != 201:
-        print(f"   ❌ Expected 201, got {resp.status_code}")
-        print(f"   Response: {resp.text}")
-        return False
-    
-    moment = resp.json()
-    poll = moment.get("poll")
-    
-    if poll is not None:
-        print(f"   ❌ Expected poll=null, got {repr(poll)}")
-        return False
-    
-    print(f"   ✅ Moment without poll returns poll=null (backward compatible)")
-    
-    print(f"\n✅ TEST J PASSED")
-    return True
-
-def test_k_get_moments_returns_poll():
-    """K) GET /api/moments returns poll in list"""
-    print("\n" + "="*80)
-    print("TEST K: GET /api/moments returns poll in list")
-    print("="*80)
-    
-    token, mei_user = login(MEI_EMAIL, MEI_PASSWORD)
-    if not token:
-        return False
-    
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # 1. Create moment with poll
-    moment_data = {
-        "text": "List test poll",
-        "poll": {
-            "options": [
-                {"text": "Option A"},
-                {"text": "Option B"}
-            ]
-        }
-    }
-    
-    resp = requests.post(f"{BASE_URL}/moments", json=moment_data, headers=headers)
-    print(f"\n1. POST /api/moments with poll → {resp.status_code}")
-    
-    if resp.status_code != 201:
-        print(f"   ❌ Expected 201, got {resp.status_code}")
-        return False
-    
-    moment = resp.json()
-    moment_id = moment.get("id")
-    print(f"   ✅ Moment created with poll, ID: {moment_id}")
-    
-    # 2. GET /api/moments and verify poll is in list
-    resp = requests.get(f"{BASE_URL}/moments", headers=headers)
-    print(f"\n2. GET /api/moments → {resp.status_code}")
-    
-    if resp.status_code != 200:
-        print(f"   ❌ Expected 200, got {resp.status_code}")
-        return False
-    
-    moments = resp.json()
-    
-    # Find the most recent moment (should be first in list)
-    if not moments:
-        print(f"   ❌ No moments found")
-        return False
-    
-    first_moment = moments[0]
-    
-    # Verify it has poll field
-    poll = first_moment.get("poll")
-    if not poll:
-        print(f"   ❌ First moment in list doesn't have poll field")
-        print(f"   First moment text: {first_moment.get('text')}")
-        return False
-    
-    # Verify poll structure
-    options = poll.get("options")
-    if not options or len(options) < 2:
-        print(f"   ❌ Poll options missing or invalid")
-        return False
-    
-    print(f"   ✅ GET /api/moments returns poll field correctly")
-    print(f"   ✅ First moment has poll with {len(options)} options")
-    print(f"   ✅ Poll structure: question={poll.get('question')}, total_votes={poll.get('total_votes')}, my_vote={poll.get('my_vote')}")
-    
-    print(f"\n✅ TEST K PASSED")
-    return True
+        try:
+            # Step 1: Vote for option 1 (Burger)
+            self.log("Step 1: POST /api/moments/{moment_id}/vote with option_index=1", "STEP")
+            response = requests.post(
+                f"{BASE_URL}/moments/{moment_id}/vote",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                json={"option_index": 1},
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                self.log(f"POST /api/moments/{moment_id}/vote → {response.status_code} (expected 200)", "FAIL")
+                self.log(f"Response: {response.text}", "FAIL")
+                self.failed += 1
+                return False
+            
+            self.log(f"POST /api/moments/{moment_id}/vote → 200 ✓", "PASS")
+            
+            # Step 2: GET moment again
+            self.log("Step 2: GET /api/moments/{moment_id} again", "STEP")
+            response = requests.get(
+                f"{BASE_URL}/moments/{moment_id}",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                self.log(f"GET /api/moments/{moment_id} → {response.status_code} (expected 200)", "FAIL")
+                self.failed += 1
+                return False
+            
+            data = response.json()
+            self.log(f"GET /api/moments/{moment_id} → 200 ✓", "PASS")
+            
+            poll = data.get("poll")
+            if not poll:
+                self.log("FAIL: poll field missing after vote", "FAIL")
+                self.failed += 1
+                return False
+            
+            # Verify vote results
+            checks = []
+            
+            my_vote = poll.get("my_vote")
+            if my_vote == 1:
+                checks.append(("my_vote", True, "my_vote=1"))
+            else:
+                checks.append(("my_vote", False, f"my_vote={my_vote}, expected 1"))
+            
+            options = poll.get("options", [])
+            if len(options) >= 2:
+                if options[1].get("votes") == 1:
+                    checks.append(("options[1].votes", True, "options[1].votes=1"))
+                else:
+                    checks.append(("options[1].votes", False, f"options[1].votes={options[1].get('votes')}, expected 1"))
+                
+                if options[0].get("votes") == 0:
+                    checks.append(("options[0].votes", True, "options[0].votes=0"))
+                else:
+                    checks.append(("options[0].votes", False, f"options[0].votes={options[0].get('votes')}, expected 0"))
+            else:
+                checks.append(("options", False, f"options has {len(options)} items, expected 2"))
+            
+            total_votes = poll.get("total_votes")
+            if total_votes == 1:
+                checks.append(("total_votes", True, "total_votes=1"))
+            else:
+                checks.append(("total_votes", False, f"total_votes={total_votes}, expected 1"))
+            
+            # Report all checks
+            all_passed = True
+            for field, passed, msg in checks:
+                if passed:
+                    self.log(f"  ✓ {field}: {msg}", "PASS")
+                else:
+                    self.log(f"  ✗ {field}: {msg}", "FAIL")
+                    all_passed = False
+            
+            if all_passed:
+                self.passed += 1
+                return True
+            else:
+                self.failed += 1
+                return False
+                
+        except Exception as e:
+            self.log(f"Exception in vote test: {e}", "FAIL")
+            self.failed += 1
+            return False
+            
+    def test_d_moment_without_poll(self) -> bool:
+        """D) Regression — moment without poll"""
+        self.log("\n=== TEST D: Regression — moment without poll ===", "INFO")
+        
+        try:
+            # Step 1: Create moment with just text
+            self.log("Step 1: POST /api/moments with just text", "STEP")
+            response = requests.post(
+                f"{BASE_URL}/moments",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                json={"text": "just text"},
+                timeout=10
+            )
+            
+            if response.status_code != 201:
+                self.log(f"POST /api/moments → {response.status_code} (expected 201)", "FAIL")
+                self.log(f"Response: {response.text}", "FAIL")
+                self.failed += 1
+                return False
+            
+            data = response.json()
+            plain_id = data.get("id")
+            self.test_moments.append(plain_id)
+            self.log(f"POST /api/moments → 201 ✓ (ID: {plain_id})", "PASS")
+            
+            # Step 2: GET the plain moment
+            self.log("Step 2: GET /api/moments/{plain_id}", "STEP")
+            response = requests.get(
+                f"{BASE_URL}/moments/{plain_id}",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                self.log(f"GET /api/moments/{plain_id} → {response.status_code} (expected 200)", "FAIL")
+                self.failed += 1
+                return False
+            
+            data = response.json()
+            self.log(f"GET /api/moments/{plain_id} → 200 ✓", "PASS")
+            
+            # Verify poll is null or absent
+            checks = []
+            
+            poll = data.get("poll")
+            if poll is None or "poll" not in data:
+                checks.append(("poll", True, "poll is null or absent"))
+            else:
+                checks.append(("poll", False, f"poll={poll}, expected null"))
+            
+            # Verify text
+            text = data.get("text")
+            if text == "just text":
+                checks.append(("text", True, "text='just text'"))
+            else:
+                checks.append(("text", False, f"text='{text}', expected 'just text'"))
+            
+            # Verify response doesn't crash (has expected fields)
+            if "id" in data and "author" in data:
+                checks.append(("structure", True, "response has expected structure"))
+            else:
+                checks.append(("structure", False, "response missing expected fields"))
+            
+            # Report all checks
+            all_passed = True
+            for field, passed, msg in checks:
+                if passed:
+                    self.log(f"  ✓ {field}: {msg}", "PASS")
+                else:
+                    self.log(f"  ✗ {field}: {msg}", "FAIL")
+                    all_passed = False
+            
+            if all_passed:
+                self.passed += 1
+                return True
+            else:
+                self.failed += 1
+                return False
+                
+        except Exception as e:
+            self.log(f"Exception in plain moment test: {e}", "FAIL")
+            self.failed += 1
+            return False
+            
+    def test_e_get_list_returns_poll(self) -> bool:
+        """E) Regression — GET list still returns poll"""
+        self.log("\n=== TEST E: Regression — GET list still returns poll ===", "INFO")
+        
+        try:
+            response = requests.get(
+                f"{BASE_URL}/moments",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                self.log(f"GET /api/moments → {response.status_code} (expected 200)", "FAIL")
+                self.failed += 1
+                return False
+            
+            data = response.json()
+            self.log(f"GET /api/moments → 200 ✓ (found {len(data)} moments)", "PASS")
+            
+            if not isinstance(data, list):
+                self.log(f"FAIL: response is not a list: {type(data)}", "FAIL")
+                self.failed += 1
+                return False
+            
+            # Find our test moments in the list
+            poll_moment = None
+            plain_moment = None
+            
+            for moment in data:
+                if moment.get("id") in self.test_moments:
+                    if moment.get("text") == "Pizza or Burger?":
+                        poll_moment = moment
+                    elif moment.get("text") == "just text":
+                        plain_moment = moment
+            
+            checks = []
+            
+            # Verify poll moment has poll
+            if poll_moment:
+                if poll_moment.get("poll") is not None:
+                    poll_data = poll_moment["poll"]
+                    if isinstance(poll_data.get("options"), list) and len(poll_data["options"]) == 2:
+                        checks.append(("poll_moment", True, f"poll moment has poll with 2 options"))
+                    else:
+                        checks.append(("poll_moment", False, f"poll moment has invalid poll structure"))
+                else:
+                    checks.append(("poll_moment", False, "poll moment missing poll field"))
+            else:
+                checks.append(("poll_moment", False, "poll moment not found in list"))
+            
+            # Verify plain moment has null poll
+            if plain_moment:
+                if plain_moment.get("poll") is None or "poll" not in plain_moment:
+                    checks.append(("plain_moment", True, "plain moment has null/absent poll"))
+                else:
+                    checks.append(("plain_moment", False, f"plain moment has poll={plain_moment.get('poll')}, expected null"))
+            else:
+                checks.append(("plain_moment", False, "plain moment not found in list"))
+            
+            # Report all checks
+            all_passed = True
+            for field, passed, msg in checks:
+                if passed:
+                    self.log(f"  ✓ {field}: {msg}", "PASS")
+                else:
+                    self.log(f"  ✗ {field}: {msg}", "FAIL")
+                    all_passed = False
+            
+            if all_passed:
+                self.passed += 1
+                return True
+            else:
+                self.failed += 1
+                return False
+                
+        except Exception as e:
+            self.log(f"Exception in list test: {e}", "FAIL")
+            self.failed += 1
+            return False
+            
+    def test_f_poll_only_no_text(self) -> bool:
+        """F) Regression — moment with only poll and no text"""
+        self.log("\n=== TEST F: Regression — moment with only poll and no text ===", "INFO")
+        
+        try:
+            # Step 1: Create moment with only poll (no text)
+            self.log("Step 1: POST /api/moments with only poll (no text)", "STEP")
+            response = requests.post(
+                f"{BASE_URL}/moments",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                json={
+                    "poll": {
+                        "options": [
+                            {"text": "A"},
+                            {"text": "B"}
+                        ]
+                    }
+                },
+                timeout=10
+            )
+            
+            if response.status_code != 201:
+                self.log(f"POST /api/moments → {response.status_code} (expected 201)", "FAIL")
+                self.log(f"Response: {response.text}", "FAIL")
+                self.failed += 1
+                return False
+            
+            data = response.json()
+            new_id = data.get("id")
+            self.test_moments.append(new_id)
+            self.log(f"POST /api/moments → 201 ✓ (ID: {new_id})", "PASS")
+            
+            # Step 2: GET the poll-only moment
+            self.log("Step 2: GET /api/moments/{new_id}", "STEP")
+            response = requests.get(
+                f"{BASE_URL}/moments/{new_id}",
+                headers={"Authorization": f"Bearer {self.mei_token}"},
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                self.log(f"GET /api/moments/{new_id} → {response.status_code} (expected 200)", "FAIL")
+                self.failed += 1
+                return False
+            
+            data = response.json()
+            self.log(f"GET /api/moments/{new_id} → 200 ✓", "PASS")
+            
+            # Verify poll present and text empty
+            checks = []
+            
+            poll = data.get("poll")
+            if poll is not None:
+                if isinstance(poll.get("options"), list) and len(poll["options"]) == 2:
+                    checks.append(("poll", True, "poll present with 2 options"))
+                else:
+                    checks.append(("poll", False, f"poll has invalid structure"))
+            else:
+                checks.append(("poll", False, "poll is null, expected poll object"))
+            
+            text = data.get("text")
+            if text == "" or text is None:
+                checks.append(("text", True, f"text is empty string or null"))
+            else:
+                checks.append(("text", False, f"text='{text}', expected empty string"))
+            
+            # Report all checks
+            all_passed = True
+            for field, passed, msg in checks:
+                if passed:
+                    self.log(f"  ✓ {field}: {msg}", "PASS")
+                else:
+                    self.log(f"  ✗ {field}: {msg}", "FAIL")
+                    all_passed = False
+            
+            if all_passed:
+                self.passed += 1
+                return True
+            else:
+                self.failed += 1
+                return False
+                
+        except Exception as e:
+            self.log(f"Exception in poll-only test: {e}", "FAIL")
+            self.failed += 1
+            return False
+            
+    def run_all_tests(self):
+        """Run all test scenarios"""
+        self.log("=" * 80, "INFO")
+        self.log("Round 17b — GET /api/moments/{id} Poll Field Bug Fix Verification", "INFO")
+        self.log("=" * 80, "INFO")
+        
+        # Login
+        if not self.login_mei():
+            self.log("\n❌ Login failed. Cannot proceed with tests.", "FAIL")
+            return False
+        
+        # Test A: Create moment with poll
+        moment_id = self.test_a_create_moment_with_poll()
+        if not moment_id:
+            self.log("\n❌ Test A failed. Cannot proceed with dependent tests.", "FAIL")
+            return False
+        
+        # Test B: GET single moment returns poll
+        self.test_b_get_single_moment_returns_poll(moment_id)
+        
+        # Test C: Vote then GET again
+        self.test_c_vote_then_get_again(moment_id)
+        
+        # Test D: Moment without poll
+        self.test_d_moment_without_poll()
+        
+        # Test E: GET list returns poll
+        self.test_e_get_list_returns_poll()
+        
+        # Test F: Poll-only moment (no text)
+        self.test_f_poll_only_no_text()
+        
+        # Summary
+        self.log("\n" + "=" * 80, "INFO")
+        self.log("TEST SUMMARY", "INFO")
+        self.log("=" * 80, "INFO")
+        self.log(f"Total Passed: {self.passed}", "PASS" if self.passed > 0 else "INFO")
+        self.log(f"Total Failed: {self.failed}", "FAIL" if self.failed > 0 else "INFO")
+        
+        if self.failed == 0:
+            self.log("\n🎉 ALL TESTS PASSED!", "PASS")
+            return True
+        else:
+            self.log(f"\n⚠️  {self.failed} TEST(S) FAILED", "FAIL")
+            return False
 
 def main():
-    print("\n" + "="*80)
-    print("ROUND 17 BACKEND TESTING - POLL FEATURE ON MOMENTS")
-    print("="*80)
-    print(f"Backend URL: {BASE_URL}")
-    print(f"Test users: {MEI_EMAIL}, {DIEGO_EMAIL}")
-    
-    results = {}
-    
-    # Test A: Create moment with 3-option poll
-    moment_id = test_a_create_moment_with_poll()
-    results["A"] = bool(moment_id)
-    
-    if moment_id:
-        # Test B: Vote for option 0
-        results["B"] = test_b_vote_for_option_0(moment_id)
-        
-        # Test C: Revote for option 2
-        results["C"] = test_c_revote_for_option_2(moment_id)
-        
-        # Test D: Diego votes for option 2
-        results["D"] = test_d_diego_votes_option_2(moment_id)
-    else:
-        results["B"] = False
-        results["C"] = False
-        results["D"] = False
-    
-    # Test E: Vote on non-existent moment
-    results["E"] = test_e_vote_nonexistent_moment()
-    
-    # Test F: Vote on moment without poll
-    results["F"] = test_f_vote_moment_without_poll()
-    
-    # Test G: Vote with out-of-range option
-    results["G"] = test_g_vote_out_of_range()
-    
-    # Test H: Create moment with only 1 poll option
-    results["H"] = test_h_poll_with_only_1_option()
-    
-    # Test I: Create moment with poll but no text no image
-    results["I"] = test_i_poll_without_text_or_image()
-    
-    # Test J: Backward compat - no poll field
-    results["J"] = test_j_backward_compat_no_poll()
-    
-    # Test K: GET /api/moments returns poll in list
-    results["K"] = test_k_get_moments_returns_poll()
-    
-    # Summary
-    print("\n" + "="*80)
-    print("SUMMARY")
-    print("="*80)
-    
-    passed = sum(1 for v in results.values() if v)
-    total = len(results)
-    
-    for test, result in results.items():
-        status = "✅ PASSED" if result else "❌ FAILED"
-        print(f"Test {test}: {status}")
-    
-    print(f"\nTotal: {passed}/{total} tests passed")
-    
-    if passed == total:
-        print("\n🎉 ALL TESTS PASSED!")
-        return 0
-    else:
-        print(f"\n⚠️  {total - passed} test(s) failed")
-        return 1
+    runner = TestRunner()
+    success = runner.run_all_tests()
+    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

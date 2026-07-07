@@ -1817,3 +1817,34 @@ agent_communication:
       message: "Round 17b: Fixed the reported bug — moment detail page (GET /moments/{id}) already returned poll data correctly on backend, but the frontend detail screen was missing the render block. Please verify backend once more: (A) Login mei, POST /api/moments with poll (2 opts) → 201, grab id. (B) GET /api/moments/{id} → 200, response must include full poll object {question, options:[{text,votes}], total_votes, my_vote} AND tags field. (C) POST /api/moments/{id}/vote {option_index:1} → 200 poll updated. (D) GET /api/moments/{id} again → my_vote==1, options[1].votes==1. Regression check: (E) GET /api/moments/{id} for moment WITHOUT poll → returns poll:null (or absent) — no crash. (F) GET /api/moments list still returns poll for each moment as before. Don't test frontend."
     - agent: "testing"
       message: "✅ ROUND 17B BUG FIX VERIFICATION COMPLETE - ALL TESTS PASSED (6/6). Backend poll field implementation is fully functional. Test summary: TEST A ✅ - Created moment with poll (Pizza or Burger?) returns 201 with moment ID. TEST B ✅ - GET /api/moments/{id} returns 200 with complete poll object verified: question=null, options array has exactly 2 items (Pizza/Burger), each option has text (string) + votes (int, both 0), total_votes=0, my_vote=null, tags field present (empty array), comments field present (empty array). All poll structure requirements met. TEST C ✅ - POST /api/moments/{id}/vote with option_index=1 returns 200. GET /api/moments/{id} again returns 200 with updated poll verified: my_vote=1, options[1].votes=1 (Burger), options[0].votes=0 (Pizza), total_votes=1. Vote tracking working correctly. TEST D ✅ - Regression check: created moment with just text 'just text' returns 201. GET /api/moments/{plain_id} returns 200 with poll=null (or absent), text='just text', response has expected structure. No crash on moments without poll. TEST E ✅ - Regression check: GET /api/moments (list endpoint) returns 200 with 34 moments. Found both test moments in list: poll moment has poll with 2 options, plain moment has null/absent poll. List endpoint returns poll field correctly. TEST F ✅ - Regression check: created moment with only poll (no text) returns 201. GET /api/moments/{new_id} returns 200 with poll present (2 options A/B), text is empty string. Poll-only moments work correctly. NO CRITICAL ISSUES FOUND. Backend GET /api/moments/{id} returns poll field correctly with all required fields across all scenarios (single moment GET, voting, moments without poll, list endpoint, poll-only moments). Bug fix verified successfully. Ready for main agent to summarize and finish."
+
+## Round 18 — Bolder Top Bar Titles + Consistent Typography
+user_problem_statement: "App top bar title should have to be little bit bold. Try you best to put perfect match text all over app."
+
+frontend:
+  - task: "Bump display font weights one step + add Figtree_800ExtraBold"
+    implemented: true
+    working: "verified_via_screenshot"
+    file: "frontend/src/theme.ts, frontend/app/_layout.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "verified_via_screenshot"
+          agent: "main"
+          comment: "Registered Figtree_800ExtraBold in _layout useFonts. Theme: fonts.displaySemi bumped 600→700 (Bold), fonts.display bumped 700→800 (ExtraBold), plus new alias fonts.displayBold=800. This upgrades every screen title, section header and hero heading across the app in one place — no per-file edits needed. Body text (Nunito 400/600/700) unchanged so long reading stays comfortable. Screenshots after change show 'Connect', 'Moments', 'New Moment' visibly bolder and consistent."
+  - task: "Shared ScreenHeader component for future/refactor unification"
+    implemented: true
+    working: "not_wired_yet"
+    file: "frontend/src/components/ScreenHeader.tsx"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: "not_wired_yet"
+          agent: "main"
+          comment: "Added ScreenHeader with BackButton + centered ExtraBold title + optional right slot. Not wired into individual screens yet — kept as a drop-in replacement helper for the next round when we refactor each screen to use it. Existing screens' hand-rolled headers still work with the bolder fonts."
+
+agent_communication:
+    - agent: "main"
+      message: "Round 18 — pure typography polish. Frontend only. No backend changes. Verified via screenshots that Connect/Moments/New Moment titles are now visibly bolder and consistent across the app. No backend retest needed."

@@ -81,8 +81,12 @@ export const radius = {
 };
 
 export const fonts = {
-  display: "Figtree_700Bold",
-  displaySemi: "Figtree_600SemiBold",
+  // Bump each display weight one step so titles feel confident and easy to
+  // scan (was 600/700 → now 700/800). Body text weights unchanged so long
+  // reading passages stay comfortable.
+  display: "Figtree_800ExtraBold",
+  displaySemi: "Figtree_700Bold",
+  displayBold: "Figtree_800ExtraBold",
   text: "Nunito_400Regular",
   textSemi: "Nunito_600SemiBold",
   textBold: "Nunito_700Bold",

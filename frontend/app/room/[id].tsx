@@ -57,6 +57,7 @@ export default function RoomScreen() {
   const [loading, setLoading] = useState(true);
   const [bgIndex, setBgIndex] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [switcherRooms, setSwitcherRooms] = useState<Room[]>([]);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [handModalOpen, setHandModalOpen] = useState(false);
   const [audienceModalOpen, setAudienceModalOpen] = useState(false);
@@ -125,6 +126,15 @@ export default function RoomScreen() {
       .get<{ coins: number; gifts: RoomGift[] }>("/rooms/gift-catalog")
       .then((res) => setGifts(res.gifts))
       .catch(() => {});
+    api
+      .get<Room[]>("/rooms")
+      .then((rs) => {
+        const others = rs.filter((r) => r.id !== id);
+        // live rooms first
+        others.sort((a, b) => Number(b.is_live) - Number(a.is_live));
+        setSwitcherRooms(others);
+      })
+      .catch(() => {});
   }, [load]);
 
   useEffect(() => {
@@ -189,6 +199,26 @@ export default function RoomScreen() {
     } finally {
       router.back();
     }
+  };
+
+  // Switch to another recommended room: leave the current one, then open the new.
+  const switchRoom = async (roomId: string) => {
+    setMenuOpen(false);
+    if (!roomId || roomId === id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await api.post(`/rooms/${id}/leave`);
+    } catch {
+      // ignore — room may already have ended
+    }
+    router.replace(`/room/${roomId}`);
+  };
+
+  // Minimize: keep membership, just pop back to the previous screen.
+  const minimizeRoom = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMenuOpen(false);
+    router.back();
   };
 
   const toggleMic = async () => {
@@ -974,52 +1004,102 @@ export default function RoomScreen() {
           animationType="fade"
           onRequestClose={() => setMenuOpen(false)}
         >
-          <Pressable style={styles.modalBackdrop} onPress={() => setMenuOpen(false)}>
-            <View style={styles.menuSheet}>
-              {isHost && (
-                <Pressable
-                  style={styles.menuRow}
-                  testID="room-menu-mute-btn"
-                  onPress={() => {
-                    toggleChatMute();
-                    setMenuOpen(false);
-                  }}
+          <View style={styles.switcherRoot}>
+            <Pressable
+              style={styles.switcherBackdrop}
+              onPress={() => setMenuOpen(false)}
+            />
+            <View style={styles.switcherPanel}>
+              <SafeAreaView edges={["top"]} style={{ flex: 1 }}>
+                <View style={styles.switcherIconRow}>
+                  <Pressable
+                    testID="room-switcher-share-btn"
+                    style={styles.switcherIconBtn}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      shareInvite();
+                    }}
+                  >
+                    <Ionicons name="share-outline" size={22} color="#FFFFFF" />
+                  </Pressable>
+                  <Pressable
+                    testID="room-switcher-minimize-btn"
+                    style={styles.switcherIconBtn}
+                    onPress={minimizeRoom}
+                  >
+                    <MaterialCommunityIcons
+                      name="picture-in-picture-bottom-right"
+                      size={19}
+                      color="#FFFFFF"
+                    />
+                  </Pressable>
+                  <Pressable
+                    testID="room-leave-btn"
+                    style={styles.switcherIconBtn}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      leave();
+                    }}
+                  >
+                    <Ionicons name="power" size={21} color="#FFFFFF" />
+                  </Pressable>
+                </View>
+
+                <Text style={styles.switcherTitle}>Recommended</Text>
+
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 40 }}
                 >
-                  <Ionicons
-                    name={room.chat_muted ? "chatbox-ellipses-outline" : "chatbox-outline"}
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.menuText}>
-                    {room.chat_muted ? "Unmute room chat" : "Mute room chat"}
-                  </Text>
-                </Pressable>
-              )}
-              <Pressable
-                style={styles.menuRow}
-                onPress={() => {
-                  setMenuOpen(false);
-                  shareInvite();
-                }}
-              >
-                <Ionicons name="share-social-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.menuText}>Invite friends</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.menuRow, styles.menuRowDanger]}
-                testID="room-leave-btn"
-                onPress={() => {
-                  setMenuOpen(false);
-                  leave();
-                }}
-              >
-                <Ionicons name="exit-outline" size={18} color="#F87171" />
-                <Text style={[styles.menuText, { color: "#F87171" }]}>
-                  {isHost ? "End room" : "Leave room"}
-                </Text>
-              </Pressable>
+                  {switcherRooms.length === 0 ? (
+                    <Text style={styles.switcherEmpty}>
+                      No other live rooms right now
+                    </Text>
+                  ) : (
+                    switcherRooms.map((r) => (
+                      <Pressable
+                        key={r.id}
+                        testID={`room-switcher-item-${r.id}`}
+                        style={styles.switcherRoomRow}
+                        onPress={() => switchRoom(r.id)}
+                      >
+                        <Avatar
+                          name={r.host?.name}
+                          url={r.host?.avatar_url}
+                          size={56}
+                          flagCode={countryToCode(r.host?.country)}
+                        />
+                        <View style={styles.switcherRoomInfo}>
+                          <Text
+                            style={styles.switcherRoomTitle}
+                            numberOfLines={1}
+                          >
+                            {r.title}
+                          </Text>
+                          <View style={styles.switcherMetaRow}>
+                            <View style={styles.switcherLangChip}>
+                              <Text style={styles.switcherLangText}>
+                                {(r.language || "en").toUpperCase()}
+                              </Text>
+                            </View>
+                            <Ionicons
+                              name="people"
+                              size={13}
+                              color="rgba(255,255,255,0.5)"
+                              style={{ marginLeft: 12 }}
+                            />
+                            <Text style={styles.switcherMembers}>
+                              {r.member_count}
+                            </Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    ))
+                  )}
+                </ScrollView>
+              </SafeAreaView>
             </View>
-          </Pressable>
+          </View>
         </Modal>
 
         <Modal
@@ -1882,6 +1962,84 @@ const makeStyles = () =>
       fontFamily: fonts.textSemi,
       fontSize: 14,
       color: "#FFFFFF",
+    },
+    switcherRoot: {
+      flex: 1,
+      flexDirection: "row",
+    },
+    switcherBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.45)",
+    },
+    switcherPanel: {
+      width: "83%",
+      maxWidth: 420,
+      backgroundColor: "#111119",
+      paddingHorizontal: spacing.lg,
+    },
+    switcherIconRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      gap: 14,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.xl,
+    },
+    switcherIconBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: "rgba(255,255,255,0.1)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    switcherTitle: {
+      fontFamily: fonts.display,
+      fontSize: 21,
+      color: "#FFFFFF",
+      marginBottom: spacing.md,
+    },
+    switcherEmpty: {
+      fontFamily: fonts.text,
+      fontSize: 14,
+      color: "rgba(255,255,255,0.5)",
+      marginTop: spacing.md,
+    },
+    switcherRoomRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: spacing.sm + 4,
+    },
+    switcherRoomInfo: {
+      flex: 1,
+      marginLeft: spacing.md,
+    },
+    switcherRoomTitle: {
+      fontFamily: fonts.textBold,
+      fontSize: 16,
+      color: "#FFFFFF",
+      marginBottom: 8,
+    },
+    switcherMetaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    switcherLangChip: {
+      backgroundColor: "rgba(255,255,255,0.1)",
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    switcherLangText: {
+      fontFamily: fonts.textSemi,
+      fontSize: 11,
+      color: "rgba(255,255,255,0.85)",
+    },
+    switcherMembers: {
+      fontFamily: fonts.textSemi,
+      fontSize: 12,
+      color: "rgba(255,255,255,0.5)",
+      marginLeft: 4,
     },
     giftSheet: {
       backgroundColor: "#2A2154",

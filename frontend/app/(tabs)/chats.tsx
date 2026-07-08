@@ -31,6 +31,13 @@ interface Shortcut {
 }
 
 const SHORTCUTS: Shortcut[] = [
+  {
+    key: "learn",
+    label: "Learn",
+    icon: "school",
+    color: "#F59E0B",
+    route: "/learn",
+  },
   { key: "courses", label: "All Courses", icon: "book", color: "#3B82F6" },
   { key: "play", label: "Play", icon: "game-controller", color: "#22C55E" },
   {

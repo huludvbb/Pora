@@ -18,6 +18,7 @@ from routes.ai import router as ai_router  # noqa: E402
 from routes.audio import router as audio_router  # noqa: E402
 from routes.auth import router as auth_router  # noqa: E402
 from routes.chats import router as chats_router  # noqa: E402
+from routes.learn import router as learn_router  # noqa: E402
 from routes.media import router as media_router  # noqa: E402
 from routes.market import router as market_router  # noqa: E402
 from routes.moments import router as moments_router  # noqa: E402
@@ -162,6 +163,7 @@ for router in (
     market_router,
     admin_router,
     push_router,
+    learn_router,
 ):
     app.include_router(router, prefix="/api")
 

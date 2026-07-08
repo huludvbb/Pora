@@ -1,601 +1,583 @@
-#!/usr/bin/env python3
 """
-Round 17b — Backend Test: GET /api/moments/{id} returns poll field correctly
-Bug fix verification for poll field in single moment endpoint.
+Backend testing for Learn module - Round 19
+Tests all /api/learn/* endpoints with comprehensive coverage
 """
 
 import requests
-import sys
+import json
 from typing import Optional
 
 # Backend URL from frontend/.env
-BASE_URL = "https://23e89f0c-4dcc-40fe-82d2-2e242a0a0207.preview.emergentagent.com/api"
+BASE_URL = "https://voice-room-ui.preview.emergentagent.com/api"
 
 # Test credentials
 MEI_EMAIL = "mei@demo.com"
 MEI_PASSWORD = "Demo1234!"
+DIEGO_EMAIL = "diego@demo.com"
+DIEGO_PASSWORD = "Demo1234!"
 
-class TestRunner:
+class TestResult:
     def __init__(self):
-        self.mei_token: Optional[str] = None
-        self.passed = 0
-        self.failed = 0
-        self.test_moments = []  # Track created moments for cleanup context
+        self.passed = []
+        self.failed = []
+        self.warnings = []
+    
+    def add_pass(self, test_name: str, details: str = ""):
+        self.passed.append(f"✅ {test_name}: {details}")
+    
+    def add_fail(self, test_name: str, details: str):
+        self.failed.append(f"❌ {test_name}: {details}")
+    
+    def add_warning(self, test_name: str, details: str):
+        self.warnings.append(f"⚠️  {test_name}: {details}")
+    
+    def print_summary(self):
+        print("\n" + "="*80)
+        print("LEARN MODULE BACKEND TEST RESULTS")
+        print("="*80)
         
-    def log(self, message: str, level: str = "INFO"):
-        """Log test messages"""
-        prefix = {
-            "INFO": "ℹ️",
-            "PASS": "✅",
-            "FAIL": "❌",
-            "STEP": "🔹"
-        }.get(level, "•")
-        print(f"{prefix} {message}")
+        if self.passed:
+            print(f"\n✅ PASSED ({len(self.passed)}):")
+            for p in self.passed:
+                print(f"  {p}")
         
-    def login_mei(self) -> bool:
-        """Login as mei@demo.com"""
-        self.log("Logging in as mei@demo.com...", "STEP")
-        try:
-            response = requests.post(
-                f"{BASE_URL}/auth/login",
-                json={"email": MEI_EMAIL, "password": MEI_PASSWORD},
-                timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                self.mei_token = data.get("token")
-                self.log(f"Login successful. Token: {self.mei_token[:20]}...", "PASS")
-                return True
-            else:
-                self.log(f"Login failed: {response.status_code} - {response.text}", "FAIL")
-                return False
-        except Exception as e:
-            self.log(f"Login exception: {e}", "FAIL")
-            return False
-            
-    def test_a_create_moment_with_poll(self) -> Optional[str]:
-        """A) Create moment with poll"""
-        self.log("\n=== TEST A: Create moment with poll ===", "INFO")
+        if self.failed:
+            print(f"\n❌ FAILED ({len(self.failed)}):")
+            for f in self.failed:
+                print(f"  {f}")
         
-        try:
-            response = requests.post(
-                f"{BASE_URL}/moments",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                json={
-                    "text": "Pizza or Burger?",
-                    "poll": {
-                        "options": [
-                            {"text": "Pizza"},
-                            {"text": "Burger"}
-                        ]
-                    }
-                },
-                timeout=10
-            )
-            
-            if response.status_code == 201:
-                data = response.json()
-                moment_id = data.get("id")
-                self.test_moments.append(moment_id)
-                self.log(f"POST /api/moments → 201 ✓", "PASS")
-                self.log(f"Moment ID: {moment_id}", "INFO")
-                self.passed += 1
-                return moment_id
-            else:
-                self.log(f"POST /api/moments → {response.status_code} (expected 201)", "FAIL")
-                self.log(f"Response: {response.text}", "FAIL")
-                self.failed += 1
-                return None
-        except Exception as e:
-            self.log(f"Exception creating moment: {e}", "FAIL")
-            self.failed += 1
+        if self.warnings:
+            print(f"\n⚠️  WARNINGS ({len(self.warnings)}):")
+            for w in self.warnings:
+                print(f"  {w}")
+        
+        print(f"\n{'='*80}")
+        print(f"TOTAL: {len(self.passed)} passed, {len(self.failed)} failed, {len(self.warnings)} warnings")
+        print("="*80 + "\n")
+
+result = TestResult()
+
+def login(email: str, password: str) -> Optional[str]:
+    """Login and return JWT token"""
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/auth/login",
+            json={"email": email, "password": password},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            return resp.json().get("token")
+        else:
+            print(f"Login failed for {email}: {resp.status_code} - {resp.text}")
             return None
-            
-    def test_b_get_single_moment_returns_poll(self, moment_id: str) -> bool:
-        """B) GET single moment returns poll"""
-        self.log("\n=== TEST B: GET single moment returns poll ===", "INFO")
+    except Exception as e:
+        print(f"Login exception for {email}: {e}")
+        return None
+
+def test_status_endpoint(token: str):
+    """Test A: GET /api/learn/status"""
+    print("\n[TEST A] Status endpoint")
+    
+    # A1: Basic status call
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/learn/status",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
         
-        try:
-            response = requests.get(
-                f"{BASE_URL}/moments/{moment_id}",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                timeout=10
-            )
+        if resp.status_code == 200:
+            data = resp.json()
+            required_keys = ["language", "due_count", "mistakes_count", "mastered_count", "total_vocab", "streak_days"]
+            missing_keys = [k for k in required_keys if k not in data]
             
-            if response.status_code != 200:
-                self.log(f"GET /api/moments/{moment_id} → {response.status_code} (expected 200)", "FAIL")
-                self.failed += 1
-                return False
-                
-            data = response.json()
-            self.log(f"GET /api/moments/{moment_id} → 200 ✓", "PASS")
-            
-            # Verify poll field is not null
-            if data.get("poll") is None:
-                self.log("FAIL: response.poll is null (expected poll object)", "FAIL")
-                self.failed += 1
-                return False
-            
-            poll = data["poll"]
-            self.log(f"Poll field present: {poll}", "PASS")
-            
-            # Verify poll structure
-            checks = []
-            
-            # Check question (null or string)
-            question = poll.get("question")
-            if question is None or isinstance(question, str):
-                checks.append(("question", True, f"question={question}"))
+            if missing_keys:
+                result.add_fail("A1: Status keys", f"Missing keys: {missing_keys}")
             else:
-                checks.append(("question", False, f"question type is {type(question)}, expected null or string"))
-            
-            # Check options (array of exactly 2 items)
-            options = poll.get("options")
-            if not isinstance(options, list):
-                checks.append(("options", False, f"options is not a list: {type(options)}"))
-            elif len(options) != 2:
-                checks.append(("options", False, f"options has {len(options)} items, expected 2"))
-            else:
-                checks.append(("options", True, f"options has 2 items"))
+                # Verify types
+                type_checks = [
+                    (isinstance(data["language"], str), "language should be str"),
+                    (isinstance(data["due_count"], int), "due_count should be int"),
+                    (isinstance(data["mistakes_count"], int), "mistakes_count should be int"),
+                    (isinstance(data["mastered_count"], int), "mastered_count should be int"),
+                    (isinstance(data["total_vocab"], int), "total_vocab should be int"),
+                    (isinstance(data["streak_days"], int), "streak_days should be int"),
+                ]
                 
-                # Check each option has text + votes
-                for i, opt in enumerate(options):
-                    if "text" not in opt:
-                        checks.append((f"options[{i}].text", False, "missing text field"))
-                    elif not isinstance(opt["text"], str):
-                        checks.append((f"options[{i}].text", False, f"text is {type(opt['text'])}, expected string"))
-                    else:
-                        checks.append((f"options[{i}].text", True, f"text='{opt['text']}'"))
+                type_errors = [msg for check, msg in type_checks if not check]
+                if type_errors:
+                    result.add_fail("A1: Status types", f"Type errors: {type_errors}")
+                else:
+                    result.add_pass("A1: Status basic", f"All keys present with correct types. language={data['language']}, total_vocab={data['total_vocab']}")
+        else:
+            result.add_fail("A1: Status basic", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("A1: Status basic", f"Exception: {e}")
+    
+    # A2: Status with language=es
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/learn/status?language=es",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("language") == "es":
+                if data.get("total_vocab", 0) >= 8:
+                    result.add_pass("A2: Status language=es", f"language='es', total_vocab={data['total_vocab']} (>= 8)")
+                else:
+                    result.add_fail("A2: Status language=es", f"total_vocab={data['total_vocab']}, expected >= 8")
+            else:
+                result.add_fail("A2: Status language=es", f"language={data.get('language')}, expected 'es'")
+        else:
+            result.add_fail("A2: Status language=es", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("A2: Status language=es", f"Exception: {e}")
+
+def test_session_endpoint(token: str) -> Optional[str]:
+    """Test B: GET /api/learn/session - returns first vocab_id for later tests"""
+    print("\n[TEST B] Session endpoint")
+    
+    first_vocab_id = None
+    
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/learn/session?language=en",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            
+            # B1: Check response structure
+            if "language" not in data or "cards" not in data:
+                result.add_fail("B1: Session structure", f"Missing 'language' or 'cards' key")
+                return None
+            
+            if data["language"] != "en":
+                result.add_fail("B1: Session language", f"Expected language='en', got '{data['language']}'")
+                return None
+            
+            cards = data["cards"]
+            if not isinstance(cards, list):
+                result.add_fail("B1: Session cards type", f"cards should be list, got {type(cards)}")
+                return None
+            
+            # B2: Check cards length
+            if len(cards) > 20:
+                result.add_fail("B2: Session cards length", f"cards length {len(cards)} > 20")
+            else:
+                result.add_pass("B2: Session cards length", f"cards length={len(cards)} (<= 20)")
+            
+            # B3: Check card structure
+            if len(cards) > 0:
+                card = cards[0]
+                required_card_keys = ["vocab_id", "word", "meaning", "language", "level", "is_new", "streak"]
+                missing_card_keys = [k for k in required_card_keys if k not in card]
+                
+                if missing_card_keys:
+                    result.add_fail("B3: Card structure", f"Missing keys in card: {missing_card_keys}")
+                else:
+                    # Check types
+                    type_checks = [
+                        (isinstance(card["vocab_id"], str), "vocab_id should be str"),
+                        (isinstance(card["word"], str), "word should be str"),
+                        (isinstance(card["meaning"], str), "meaning should be str"),
+                        (card["language"] == "en", "language should be 'en'"),
+                        (isinstance(card["is_new"], bool), "is_new should be bool"),
+                        (isinstance(card["streak"], int), "streak should be int"),
+                    ]
                     
-                    if "votes" not in opt:
-                        checks.append((f"options[{i}].votes", False, "missing votes field"))
-                    elif not isinstance(opt["votes"], int):
-                        checks.append((f"options[{i}].votes", False, f"votes is {type(opt['votes'])}, expected int"))
+                    type_errors = [msg for check, msg in type_checks if not check]
+                    if type_errors:
+                        result.add_fail("B3: Card types", f"Type errors: {type_errors}")
                     else:
-                        checks.append((f"options[{i}].votes", True, f"votes={opt['votes']}"))
-            
-            # Check total_votes == 0
-            total_votes = poll.get("total_votes")
-            if total_votes == 0:
-                checks.append(("total_votes", True, "total_votes=0"))
+                        first_vocab_id = card["vocab_id"]
+                        result.add_pass("B3: Card structure", f"All card keys present with correct types. word='{card['word']}', is_new={card['is_new']}")
+                        
+                        # B4: Check is_new status (informational)
+                        new_count = sum(1 for c in cards if c.get("is_new"))
+                        result.add_pass("B4: Card is_new status", f"{new_count}/{len(cards)} cards are new")
             else:
-                checks.append(("total_votes", False, f"total_votes={total_votes}, expected 0"))
+                result.add_warning("B3: Card structure", "No cards returned, cannot verify card structure")
             
-            # Check my_vote == null
-            my_vote = poll.get("my_vote")
-            if my_vote is None:
-                checks.append(("my_vote", True, "my_vote=null"))
-            else:
-                checks.append(("my_vote", False, f"my_vote={my_vote}, expected null"))
-            
-            # Check tags field is present
-            if "tags" in data:
-                checks.append(("tags", True, f"tags={data['tags']}"))
-            else:
-                checks.append(("tags", False, "tags field missing"))
-            
-            # Check comments field is present
-            if "comments" in data:
-                checks.append(("comments", True, f"comments array present (length={len(data['comments'])})"))
-            else:
-                checks.append(("comments", False, "comments field missing"))
-            
-            # Report all checks
-            all_passed = True
-            for field, passed, msg in checks:
-                if passed:
-                    self.log(f"  ✓ {field}: {msg}", "PASS")
-                else:
-                    self.log(f"  ✗ {field}: {msg}", "FAIL")
-                    all_passed = False
-            
-            if all_passed:
-                self.passed += 1
-                return True
-            else:
-                self.failed += 1
-                return False
-                
-        except Exception as e:
-            self.log(f"Exception getting moment: {e}", "FAIL")
-            self.failed += 1
-            return False
-            
-    def test_c_vote_then_get_again(self, moment_id: str) -> bool:
-        """C) Vote then GET again"""
-        self.log("\n=== TEST C: Vote then GET again ===", "INFO")
+            return first_vocab_id
+        else:
+            result.add_fail("B1: Session request", f"Expected 200, got {resp.status_code}: {resp.text}")
+            return None
+    except Exception as e:
+        result.add_fail("B1: Session request", f"Exception: {e}")
+        return None
+
+def test_review_endpoint(token: str, vocab_id: str):
+    """Test C: POST /api/learn/review"""
+    print("\n[TEST C] Review endpoint")
+    
+    if not vocab_id:
+        result.add_fail("C: Review tests", "No vocab_id available from session")
+        return
+    
+    # C1: Review with grade="correct"
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/learn/review",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"vocab_id": vocab_id, "grade": "correct"},
+            timeout=10
+        )
         
-        try:
-            # Step 1: Vote for option 1 (Burger)
-            self.log("Step 1: POST /api/moments/{moment_id}/vote with option_index=1", "STEP")
-            response = requests.post(
-                f"{BASE_URL}/moments/{moment_id}/vote",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                json={"option_index": 1},
-                timeout=10
-            )
+        if resp.status_code == 200:
+            data = resp.json()
             
-            if response.status_code != 200:
-                self.log(f"POST /api/moments/{moment_id}/vote → {response.status_code} (expected 200)", "FAIL")
-                self.log(f"Response: {response.text}", "FAIL")
-                self.failed += 1
-                return False
-            
-            self.log(f"POST /api/moments/{moment_id}/vote → 200 ✓", "PASS")
-            
-            # Step 2: GET moment again
-            self.log("Step 2: GET /api/moments/{moment_id} again", "STEP")
-            response = requests.get(
-                f"{BASE_URL}/moments/{moment_id}",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                timeout=10
-            )
-            
-            if response.status_code != 200:
-                self.log(f"GET /api/moments/{moment_id} → {response.status_code} (expected 200)", "FAIL")
-                self.failed += 1
-                return False
-            
-            data = response.json()
-            self.log(f"GET /api/moments/{moment_id} → 200 ✓", "PASS")
-            
-            poll = data.get("poll")
-            if not poll:
-                self.log("FAIL: poll field missing after vote", "FAIL")
-                self.failed += 1
-                return False
-            
-            # Verify vote results
-            checks = []
-            
-            my_vote = poll.get("my_vote")
-            if my_vote == 1:
-                checks.append(("my_vote", True, "my_vote=1"))
-            else:
-                checks.append(("my_vote", False, f"my_vote={my_vote}, expected 1"))
-            
-            options = poll.get("options", [])
-            if len(options) >= 2:
-                if options[1].get("votes") == 1:
-                    checks.append(("options[1].votes", True, "options[1].votes=1"))
+            # Check response fields
+            if data.get("streak") == 1 and data.get("interval_days", 0) >= 1 and data.get("last_result") == "correct":
+                next_review = data.get("next_review")
+                if next_review and isinstance(next_review, str):
+                    result.add_pass("C1: Review correct", f"streak=1, interval_days={data['interval_days']}, next_review={next_review[:19]}, last_result='correct'")
                 else:
-                    checks.append(("options[1].votes", False, f"options[1].votes={options[1].get('votes')}, expected 1"))
-                
-                if options[0].get("votes") == 0:
-                    checks.append(("options[0].votes", True, "options[0].votes=0"))
-                else:
-                    checks.append(("options[0].votes", False, f"options[0].votes={options[0].get('votes')}, expected 0"))
+                    result.add_fail("C1: Review correct", f"next_review is missing or invalid: {next_review}")
             else:
-                checks.append(("options", False, f"options has {len(options)} items, expected 2"))
-            
-            total_votes = poll.get("total_votes")
-            if total_votes == 1:
-                checks.append(("total_votes", True, "total_votes=1"))
-            else:
-                checks.append(("total_votes", False, f"total_votes={total_votes}, expected 1"))
-            
-            # Report all checks
-            all_passed = True
-            for field, passed, msg in checks:
-                if passed:
-                    self.log(f"  ✓ {field}: {msg}", "PASS")
-                else:
-                    self.log(f"  ✗ {field}: {msg}", "FAIL")
-                    all_passed = False
-            
-            if all_passed:
-                self.passed += 1
-                return True
-            else:
-                self.failed += 1
-                return False
-                
-        except Exception as e:
-            self.log(f"Exception in vote test: {e}", "FAIL")
-            self.failed += 1
-            return False
-            
-    def test_d_moment_without_poll(self) -> bool:
-        """D) Regression — moment without poll"""
-        self.log("\n=== TEST D: Regression — moment without poll ===", "INFO")
+                result.add_fail("C1: Review correct", f"Unexpected values: streak={data.get('streak')}, interval_days={data.get('interval_days')}, last_result={data.get('last_result')}")
+        else:
+            result.add_fail("C1: Review correct", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("C1: Review correct", f"Exception: {e}")
+    
+    # C2: Review with grade="wrong"
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/learn/review",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"vocab_id": vocab_id, "grade": "wrong"},
+            timeout=10
+        )
         
-        try:
-            # Step 1: Create moment with just text
-            self.log("Step 1: POST /api/moments with just text", "STEP")
-            response = requests.post(
-                f"{BASE_URL}/moments",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                json={"text": "just text"},
-                timeout=10
-            )
+        if resp.status_code == 200:
+            data = resp.json()
             
-            if response.status_code != 201:
-                self.log(f"POST /api/moments → {response.status_code} (expected 201)", "FAIL")
-                self.log(f"Response: {response.text}", "FAIL")
-                self.failed += 1
-                return False
-            
-            data = response.json()
-            plain_id = data.get("id")
-            self.test_moments.append(plain_id)
-            self.log(f"POST /api/moments → 201 ✓ (ID: {plain_id})", "PASS")
-            
-            # Step 2: GET the plain moment
-            self.log("Step 2: GET /api/moments/{plain_id}", "STEP")
-            response = requests.get(
-                f"{BASE_URL}/moments/{plain_id}",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                timeout=10
-            )
-            
-            if response.status_code != 200:
-                self.log(f"GET /api/moments/{plain_id} → {response.status_code} (expected 200)", "FAIL")
-                self.failed += 1
-                return False
-            
-            data = response.json()
-            self.log(f"GET /api/moments/{plain_id} → 200 ✓", "PASS")
-            
-            # Verify poll is null or absent
-            checks = []
-            
-            poll = data.get("poll")
-            if poll is None or "poll" not in data:
-                checks.append(("poll", True, "poll is null or absent"))
+            if data.get("streak") == 0 and data.get("interval_days") == 0 and data.get("last_result") == "wrong":
+                result.add_pass("C2: Review wrong", f"streak=0, interval_days=0, last_result='wrong'")
             else:
-                checks.append(("poll", False, f"poll={poll}, expected null"))
-            
-            # Verify text
-            text = data.get("text")
-            if text == "just text":
-                checks.append(("text", True, "text='just text'"))
-            else:
-                checks.append(("text", False, f"text='{text}', expected 'just text'"))
-            
-            # Verify response doesn't crash (has expected fields)
-            if "id" in data and "author" in data:
-                checks.append(("structure", True, "response has expected structure"))
-            else:
-                checks.append(("structure", False, "response missing expected fields"))
-            
-            # Report all checks
-            all_passed = True
-            for field, passed, msg in checks:
-                if passed:
-                    self.log(f"  ✓ {field}: {msg}", "PASS")
-                else:
-                    self.log(f"  ✗ {field}: {msg}", "FAIL")
-                    all_passed = False
-            
-            if all_passed:
-                self.passed += 1
-                return True
-            else:
-                self.failed += 1
-                return False
-                
-        except Exception as e:
-            self.log(f"Exception in plain moment test: {e}", "FAIL")
-            self.failed += 1
-            return False
-            
-    def test_e_get_list_returns_poll(self) -> bool:
-        """E) Regression — GET list still returns poll"""
-        self.log("\n=== TEST E: Regression — GET list still returns poll ===", "INFO")
+                result.add_fail("C2: Review wrong", f"Unexpected values: streak={data.get('streak')}, interval_days={data.get('interval_days')}, last_result={data.get('last_result')}")
+        else:
+            result.add_fail("C2: Review wrong", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("C2: Review wrong", f"Exception: {e}")
+    
+    # C3: Review with grade="hard"
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/learn/review",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"vocab_id": vocab_id, "grade": "hard"},
+            timeout=10
+        )
         
-        try:
-            response = requests.get(
-                f"{BASE_URL}/moments",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                timeout=10
-            )
+        if resp.status_code == 200:
+            data = resp.json()
             
-            if response.status_code != 200:
-                self.log(f"GET /api/moments → {response.status_code} (expected 200)", "FAIL")
-                self.failed += 1
-                return False
+            if data.get("last_result") == "hard" and data.get("streak") == 0:
+                result.add_pass("C3: Review hard", f"last_result='hard', streak=0 (grade!=correct resets streak)")
+            else:
+                result.add_fail("C3: Review hard", f"Unexpected values: last_result={data.get('last_result')}, streak={data.get('streak')}")
+        else:
+            result.add_fail("C3: Review hard", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("C3: Review hard", f"Exception: {e}")
+    
+    # C4: Review with grade="correct" again
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/learn/review",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"vocab_id": vocab_id, "grade": "correct"},
+            timeout=10
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
             
-            data = response.json()
-            self.log(f"GET /api/moments → 200 ✓ (found {len(data)} moments)", "PASS")
+            if data.get("streak") == 1:
+                result.add_pass("C4: Review correct again", f"streak=1 (reset from previous correct)")
+            else:
+                result.add_fail("C4: Review correct again", f"Expected streak=1, got {data.get('streak')}")
+        else:
+            result.add_fail("C4: Review correct again", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("C4: Review correct again", f"Exception: {e}")
+
+def test_review_edge_cases(token: str):
+    """Test D: Review edge cases"""
+    print("\n[TEST D] Review edge cases")
+    
+    # D1: Unknown vocab_id
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/learn/review",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"vocab_id": "nonexistent-id-xyz", "grade": "correct"},
+            timeout=10
+        )
+        
+        if resp.status_code == 404:
+            detail = resp.json().get("detail", "")
+            if "not found" in detail.lower():
+                result.add_pass("D1: Unknown vocab_id", f"404 with message: '{detail}'")
+            else:
+                result.add_warning("D1: Unknown vocab_id", f"404 but unexpected message: '{detail}'")
+        else:
+            result.add_fail("D1: Unknown vocab_id", f"Expected 404, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("D1: Unknown vocab_id", f"Exception: {e}")
+    
+    # D2: Invalid grade
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/learn/review",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"vocab_id": "any-id", "grade": "maybe"},
+            timeout=10
+        )
+        
+        if resp.status_code == 422:
+            result.add_pass("D2: Invalid grade", f"422 validation error for grade='maybe'")
+        else:
+            result.add_fail("D2: Invalid grade", f"Expected 422, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("D2: Invalid grade", f"Exception: {e}")
+
+def test_vocabulary_endpoint(token: str):
+    """Test E: GET /api/learn/vocabulary"""
+    print("\n[TEST E] Vocabulary list")
+    
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/learn/vocabulary?language=en",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
             
             if not isinstance(data, list):
-                self.log(f"FAIL: response is not a list: {type(data)}", "FAIL")
-                self.failed += 1
-                return False
+                result.add_fail("E1: Vocabulary type", f"Expected list, got {type(data)}")
+                return
             
-            # Find our test moments in the list
-            poll_moment = None
-            plain_moment = None
+            if len(data) == 0:
+                result.add_warning("E1: Vocabulary list", "Empty vocabulary list")
+                return
             
-            for moment in data:
-                if moment.get("id") in self.test_moments:
-                    if moment.get("text") == "Pizza or Burger?":
-                        poll_moment = moment
-                    elif moment.get("text") == "just text":
-                        plain_moment = moment
+            # Check structure of first item
+            item = data[0]
+            required_keys = ["id", "word", "meaning", "language", "level", "seen", "streak", "last_result"]
+            missing_keys = [k for k in required_keys if k not in item]
             
-            checks = []
-            
-            # Verify poll moment has poll
-            if poll_moment:
-                if poll_moment.get("poll") is not None:
-                    poll_data = poll_moment["poll"]
-                    if isinstance(poll_data.get("options"), list) and len(poll_data["options"]) == 2:
-                        checks.append(("poll_moment", True, f"poll moment has poll with 2 options"))
-                    else:
-                        checks.append(("poll_moment", False, f"poll moment has invalid poll structure"))
-                else:
-                    checks.append(("poll_moment", False, "poll moment missing poll field"))
+            if missing_keys:
+                result.add_fail("E1: Vocabulary structure", f"Missing keys: {missing_keys}")
             else:
-                checks.append(("poll_moment", False, "poll moment not found in list"))
-            
-            # Verify plain moment has null poll
-            if plain_moment:
-                if plain_moment.get("poll") is None or "poll" not in plain_moment:
-                    checks.append(("plain_moment", True, "plain moment has null/absent poll"))
-                else:
-                    checks.append(("plain_moment", False, f"plain moment has poll={plain_moment.get('poll')}, expected null"))
-            else:
-                checks.append(("plain_moment", False, "plain moment not found in list"))
-            
-            # Report all checks
-            all_passed = True
-            for field, passed, msg in checks:
-                if passed:
-                    self.log(f"  ✓ {field}: {msg}", "PASS")
-                else:
-                    self.log(f"  ✗ {field}: {msg}", "FAIL")
-                    all_passed = False
-            
-            if all_passed:
-                self.passed += 1
-                return True
-            else:
-                self.failed += 1
-                return False
+                # Check types
+                type_checks = [
+                    (isinstance(item["id"], str), "id should be str"),
+                    (isinstance(item["word"], str), "word should be str"),
+                    (isinstance(item["meaning"], str), "meaning should be str"),
+                    (item["language"] == "en", "language should be 'en'"),
+                    (isinstance(item["seen"], bool), "seen should be bool"),
+                    (isinstance(item["streak"], int), "streak should be int"),
+                ]
                 
-        except Exception as e:
-            self.log(f"Exception in list test: {e}", "FAIL")
-            self.failed += 1
-            return False
-            
-    def test_f_poll_only_no_text(self) -> bool:
-        """F) Regression — moment with only poll and no text"""
-        self.log("\n=== TEST F: Regression — moment with only poll and no text ===", "INFO")
-        
-        try:
-            # Step 1: Create moment with only poll (no text)
-            self.log("Step 1: POST /api/moments with only poll (no text)", "STEP")
-            response = requests.post(
-                f"{BASE_URL}/moments",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                json={
-                    "poll": {
-                        "options": [
-                            {"text": "A"},
-                            {"text": "B"}
-                        ]
-                    }
-                },
-                timeout=10
-            )
-            
-            if response.status_code != 201:
-                self.log(f"POST /api/moments → {response.status_code} (expected 201)", "FAIL")
-                self.log(f"Response: {response.text}", "FAIL")
-                self.failed += 1
-                return False
-            
-            data = response.json()
-            new_id = data.get("id")
-            self.test_moments.append(new_id)
-            self.log(f"POST /api/moments → 201 ✓ (ID: {new_id})", "PASS")
-            
-            # Step 2: GET the poll-only moment
-            self.log("Step 2: GET /api/moments/{new_id}", "STEP")
-            response = requests.get(
-                f"{BASE_URL}/moments/{new_id}",
-                headers={"Authorization": f"Bearer {self.mei_token}"},
-                timeout=10
-            )
-            
-            if response.status_code != 200:
-                self.log(f"GET /api/moments/{new_id} → {response.status_code} (expected 200)", "FAIL")
-                self.failed += 1
-                return False
-            
-            data = response.json()
-            self.log(f"GET /api/moments/{new_id} → 200 ✓", "PASS")
-            
-            # Verify poll present and text empty
-            checks = []
-            
-            poll = data.get("poll")
-            if poll is not None:
-                if isinstance(poll.get("options"), list) and len(poll["options"]) == 2:
-                    checks.append(("poll", True, "poll present with 2 options"))
+                type_errors = [msg for check, msg in type_checks if not check]
+                if type_errors:
+                    result.add_fail("E1: Vocabulary types", f"Type errors: {type_errors}")
                 else:
-                    checks.append(("poll", False, f"poll has invalid structure"))
+                    result.add_pass("E1: Vocabulary structure", f"All keys present with correct types. Total items: {len(data)}")
+            
+            # E2: Check if any item has seen=true (after previous reviews)
+            seen_items = [i for i in data if i.get("seen")]
+            if seen_items:
+                result.add_pass("E2: Vocabulary seen status", f"{len(seen_items)}/{len(data)} items have seen=true")
             else:
-                checks.append(("poll", False, "poll is null, expected poll object"))
-            
-            text = data.get("text")
-            if text == "" or text is None:
-                checks.append(("text", True, f"text is empty string or null"))
-            else:
-                checks.append(("text", False, f"text='{text}', expected empty string"))
-            
-            # Report all checks
-            all_passed = True
-            for field, passed, msg in checks:
-                if passed:
-                    self.log(f"  ✓ {field}: {msg}", "PASS")
-                else:
-                    self.log(f"  ✗ {field}: {msg}", "FAIL")
-                    all_passed = False
-            
-            if all_passed:
-                self.passed += 1
-                return True
-            else:
-                self.failed += 1
-                return False
-                
-        except Exception as e:
-            self.log(f"Exception in poll-only test: {e}", "FAIL")
-            self.failed += 1
-            return False
-            
-    def run_all_tests(self):
-        """Run all test scenarios"""
-        self.log("=" * 80, "INFO")
-        self.log("Round 17b — GET /api/moments/{id} Poll Field Bug Fix Verification", "INFO")
-        self.log("=" * 80, "INFO")
-        
-        # Login
-        if not self.login_mei():
-            self.log("\n❌ Login failed. Cannot proceed with tests.", "FAIL")
-            return False
-        
-        # Test A: Create moment with poll
-        moment_id = self.test_a_create_moment_with_poll()
-        if not moment_id:
-            self.log("\n❌ Test A failed. Cannot proceed with dependent tests.", "FAIL")
-            return False
-        
-        # Test B: GET single moment returns poll
-        self.test_b_get_single_moment_returns_poll(moment_id)
-        
-        # Test C: Vote then GET again
-        self.test_c_vote_then_get_again(moment_id)
-        
-        # Test D: Moment without poll
-        self.test_d_moment_without_poll()
-        
-        # Test E: GET list returns poll
-        self.test_e_get_list_returns_poll()
-        
-        # Test F: Poll-only moment (no text)
-        self.test_f_poll_only_no_text()
-        
-        # Summary
-        self.log("\n" + "=" * 80, "INFO")
-        self.log("TEST SUMMARY", "INFO")
-        self.log("=" * 80, "INFO")
-        self.log(f"Total Passed: {self.passed}", "PASS" if self.passed > 0 else "INFO")
-        self.log(f"Total Failed: {self.failed}", "FAIL" if self.failed > 0 else "INFO")
-        
-        if self.failed == 0:
-            self.log("\n🎉 ALL TESTS PASSED!", "PASS")
-            return True
+                result.add_warning("E2: Vocabulary seen status", "No items with seen=true (expected at least one after reviews)")
         else:
-            self.log(f"\n⚠️  {self.failed} TEST(S) FAILED", "FAIL")
-            return False
+            result.add_fail("E1: Vocabulary request", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("E1: Vocabulary request", f"Exception: {e}")
+
+def test_mistakes_endpoint(token: str):
+    """Test F: GET /api/learn/mistakes"""
+    print("\n[TEST F] Mistakes endpoint")
+    
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/learn/mistakes",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            
+            if not isinstance(data, list):
+                result.add_fail("F1: Mistakes type", f"Expected list, got {type(data)}")
+                return
+            
+            # After marking a word wrong in test C2, we should have at least one mistake
+            if len(data) > 0:
+                result.add_pass("F1: Mistakes list", f"Found {len(data)} mistake(s) after marking word wrong")
+                
+                # Check structure
+                item = data[0]
+                if "vocab_id" in item and "word" in item and "meaning" in item:
+                    result.add_pass("F2: Mistakes structure", f"Mistake item has required fields: word='{item.get('word')}'")
+                else:
+                    result.add_fail("F2: Mistakes structure", f"Missing required fields in mistake item")
+            else:
+                result.add_warning("F1: Mistakes list", "No mistakes found (expected at least one after test C2)")
+        else:
+            result.add_fail("F1: Mistakes request", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("F1: Mistakes request", f"Exception: {e}")
+
+def test_collections_endpoint(token: str):
+    """Test G: Collections endpoints"""
+    print("\n[TEST G] Collections endpoints")
+    
+    # G1: Create collection
+    collection_id = None
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/learn/collections",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"name": "My Favorite Words", "language": "en", "vocab_ids": ["x", "y", "z"]},
+            timeout=10
+        )
+        
+        if resp.status_code == 201:
+            data = resp.json()
+            
+            required_keys = ["id", "name", "language", "count", "created_at"]
+            missing_keys = [k for k in required_keys if k not in data]
+            
+            if missing_keys:
+                result.add_fail("G1: Create collection", f"Missing keys: {missing_keys}")
+            else:
+                if data["name"] == "My Favorite Words" and data["language"] == "en" and data["count"] == 3:
+                    collection_id = data["id"]
+                    result.add_pass("G1: Create collection", f"Created collection: name='{data['name']}', language='en', count=3, id={collection_id}")
+                else:
+                    result.add_fail("G1: Create collection", f"Unexpected values: name={data['name']}, language={data['language']}, count={data['count']}")
+        else:
+            result.add_fail("G1: Create collection", f"Expected 201, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("G1: Create collection", f"Exception: {e}")
+    
+    # G2: List collections
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/learn/collections",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            
+            if not isinstance(data, list):
+                result.add_fail("G2: List collections type", f"Expected list, got {type(data)}")
+            else:
+                # Find our created collection
+                found = any(c.get("name") == "My Favorite Words" and c.get("count") == 3 for c in data)
+                if found:
+                    result.add_pass("G2: List collections", f"Found 'My Favorite Words' collection in list (total: {len(data)} collections)")
+                else:
+                    result.add_fail("G2: List collections", f"'My Favorite Words' collection not found in list")
+        else:
+            result.add_fail("G2: List collections", f"Expected 200, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("G2: List collections", f"Exception: {e}")
+    
+    # G3: Create collection with empty name (should fail)
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/learn/collections",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"name": "", "language": "en", "vocab_ids": []},
+            timeout=10
+        )
+        
+        if resp.status_code == 422:
+            result.add_pass("G3: Empty name validation", "422 validation error for empty name")
+        else:
+            result.add_fail("G3: Empty name validation", f"Expected 422, got {resp.status_code}: {resp.text}")
+    except Exception as e:
+        result.add_fail("G3: Empty name validation", f"Exception: {e}")
+
+def test_auth_required():
+    """Test H: Auth required on all endpoints"""
+    print("\n[TEST H] Auth required")
+    
+    endpoints = [
+        ("GET", "/learn/status"),
+        ("GET", "/learn/session"),
+        ("POST", "/learn/review", {"vocab_id": "test", "grade": "correct"}),
+        ("GET", "/learn/vocabulary"),
+        ("GET", "/learn/mistakes"),
+        ("GET", "/learn/collections"),
+        ("POST", "/learn/collections", {"name": "Test"}),
+    ]
+    
+    failed_auth = []
+    for method, path, *body in endpoints:
+        try:
+            if method == "GET":
+                resp = requests.get(f"{BASE_URL}{path}", timeout=10)
+            else:
+                resp = requests.post(f"{BASE_URL}{path}", json=body[0] if body else {}, timeout=10)
+            
+            if resp.status_code not in [401, 403]:
+                failed_auth.append(f"{method} {path} returned {resp.status_code} (expected 401/403)")
+        except Exception as e:
+            failed_auth.append(f"{method} {path} exception: {e}")
+    
+    if failed_auth:
+        result.add_fail("H: Auth required", f"Some endpoints don't require auth: {failed_auth}")
+    else:
+        result.add_pass("H: Auth required", f"All {len(endpoints)} endpoints correctly require authentication (401/403)")
 
 def main():
-    runner = TestRunner()
-    success = runner.run_all_tests()
-    sys.exit(0 if success else 1)
+    print("="*80)
+    print("LEARN MODULE BACKEND TESTING - ROUND 19")
+    print("="*80)
+    print(f"Backend URL: {BASE_URL}")
+    print(f"Test user: {MEI_EMAIL}")
+    
+    # Login
+    print("\n[SETUP] Logging in as mei@demo.com...")
+    mei_token = login(MEI_EMAIL, MEI_PASSWORD)
+    
+    if not mei_token:
+        print("❌ CRITICAL: Failed to login as mei@demo.com")
+        result.add_fail("Setup", "Failed to login as mei@demo.com")
+        result.print_summary()
+        return
+    
+    print("✅ Login successful")
+    
+    # Run all tests
+    test_status_endpoint(mei_token)
+    first_vocab_id = test_session_endpoint(mei_token)
+    test_review_endpoint(mei_token, first_vocab_id)
+    test_review_edge_cases(mei_token)
+    test_vocabulary_endpoint(mei_token)
+    test_mistakes_endpoint(mei_token)
+    test_collections_endpoint(mei_token)
+    test_auth_required()
+    
+    # Print summary
+    result.print_summary()
 
 if __name__ == "__main__":
     main()

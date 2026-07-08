@@ -180,24 +180,24 @@ export default function LearnDashboard() {
         <DockBtn
           testID="learn-dock-home"
           icon="home"
-          onPress={() => {}}
+          onPress={() => router.replace("/learn/dashboard")}
           active
         />
         <DockBtn
-          testID="learn-dock-power"
-          icon="power"
-          orange
-          onPress={() => router.push("/learn/session")}
+          testID="learn-dock-plan"
+          icon="checkmark-circle"
+          onPress={() => router.replace("/learn/plan")}
         />
         <DockBtn
-          testID="learn-dock-people"
+          testID="learn-dock-classes"
           icon="people"
-          onPress={() => router.push("/(tabs)/connect")}
+          orange
+          onPress={() => router.replace("/learn/classes")}
         />
         <DockBtn
-          testID="learn-dock-more"
-          icon="apps"
-          onPress={() => router.back()}
+          testID="learn-dock-explore"
+          icon="telescope"
+          onPress={() => router.replace("/learn/explore")}
         />
       </View>
     </SafeAreaView>

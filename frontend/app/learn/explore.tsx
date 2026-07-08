@@ -48,25 +48,25 @@ export default function LearnExplore() {
           testID="learn-explore-courses"
           color="#DABFFF"
           title="Courses"
-          body="Find all courses here, based on your level, skills, and interests—tailored for growth."
+          body="Curated courses across travel, career, everyday chat and pure grammar."
           icon={<MaterialCommunityIcons name="school" size={22} color="#2B1D51" />}
-          onPress={() => router.push("/learn/vocabulary")}
+          onPress={() => router.push("/learn/courses")}
         />
         <ExploreCard
           testID="learn-explore-chat-partner"
           color={learnColors.yellow}
-          title="All Chat Partner"
-          body="Speak in your own words in real time dialogues, expressing thoughts and ideas."
+          title="AI Chat Partner"
+          body="Real-time chat with Lupe, your AI tutor. Corrections included."
           icon={
             <MaterialCommunityIcons name="chip" size={22} color="#0B0B0F" />
           }
-          onPress={() => router.push("/learn/classes")}
+          onPress={() => router.push("/learn/tutor")}
         />
         <ExploreCard
           testID="learn-explore-grammar"
           color={learnColors.green}
           title="Grammar Guide"
-          body="Simple grammar explanations with clear, easy-to-understand examples for every level."
+          body="Simple grammar explanations with clear, easy-to-understand examples."
           icon={
             <MaterialCommunityIcons
               name="puzzle-outline"
@@ -74,7 +74,47 @@ export default function LearnExplore() {
               color="#0B0B0F"
             />
           }
-          onPress={() => router.push("/learn/vocabulary")}
+          onPress={() => router.push("/learn/grammar")}
+        />
+        <ExploreCard
+          testID="learn-explore-library"
+          color="#7DD3FC"
+          title="Reading Library"
+          body="Short stories with built-in glossaries — level up your comprehension."
+          icon={
+            <MaterialCommunityIcons name="book-open-page-variant" size={22} color="#0B0B0F" />
+          }
+          onPress={() => router.push("/learn/library")}
+        />
+        <ExploreCard
+          testID="learn-explore-pronunciation"
+          color={learnColors.orange}
+          title="Pronunciation"
+          body="Practice phrases with instant pronunciation feedback."
+          icon={
+            <MaterialCommunityIcons name="microphone" size={22} color="#FFFFFF" />
+          }
+          onPress={() => router.push("/learn/pronunciation")}
+        />
+        <ExploreCard
+          testID="learn-explore-writing"
+          color="#F9A8D4"
+          title="Writing Practice"
+          body="Timed prompts + AI feedback to sharpen your writing."
+          icon={
+            <MaterialCommunityIcons name="pencil" size={22} color="#0B0B0F" />
+          }
+          onPress={() => router.push("/learn/writing")}
+        />
+        <ExploreCard
+          testID="learn-explore-leaderboard"
+          color="#DABFFF"
+          title="Leaderboard"
+          body="See how you stack up this week — climb the ranks with more XP."
+          icon={
+            <MaterialCommunityIcons name="trophy" size={22} color="#0B0B0F" />
+          }
+          onPress={() => router.push("/learn/leaderboard")}
         />
       </ScrollView>
 

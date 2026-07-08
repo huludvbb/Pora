@@ -73,8 +73,18 @@ export default function LearnDashboard() {
           <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
           <Text style={styles.topTitle}>Review</Text>
         </Pressable>
-        <View style={styles.avatarChip}>
-          <Text style={styles.avatarChipEmoji}>🙂</Text>
+        <View style={styles.topRight}>
+          <Pressable
+            testID="learn-dash-settings"
+            onPress={() => router.push("/learn/settings")}
+            style={styles.avatarChip}
+            hitSlop={8}
+          >
+            <Ionicons name="settings-outline" size={18} color="#FFFFFF" />
+          </Pressable>
+          <View style={styles.avatarChip}>
+            <Text style={styles.avatarChipEmoji}>🙂</Text>
+          </View>
         </View>
       </View>
 
@@ -169,6 +179,54 @@ export default function LearnDashboard() {
           />
         </Pressable>
 
+        {/* Quick Actions grid */}
+        <Text style={styles.sectionLabel}>Quick actions</Text>
+        <View style={styles.quickGrid}>
+          <QuickTile
+            testID="learn-quick-wod"
+            emoji="🍷"
+            label="Word of the Day"
+            color={learnColors.yellow}
+            onPress={() => router.push("/learn/word-of-day")}
+          />
+          <QuickTile
+            testID="learn-quick-tutor"
+            emoji="🤖"
+            label="AI Tutor"
+            color="#DABFFF"
+            onPress={() => router.push("/learn/tutor")}
+          />
+          <QuickTile
+            testID="learn-quick-stats"
+            emoji="📊"
+            label="My progress"
+            color={learnColors.green}
+            onPress={() => router.push("/learn/stats")}
+          />
+          <QuickTile
+            testID="learn-quick-ach"
+            emoji="🏆"
+            label="Achievements"
+            color={learnColors.orange}
+            onPress={() => router.push("/learn/achievements")}
+            darkText={false}
+          />
+          <QuickTile
+            testID="learn-quick-lib"
+            emoji="📖"
+            label="Library"
+            color="#7DD3FC"
+            onPress={() => router.push("/learn/library")}
+          />
+          <QuickTile
+            testID="learn-quick-lb"
+            emoji="🥇"
+            label="Leaderboard"
+            color="#F9A8D4"
+            onPress={() => router.push("/learn/leaderboard")}
+          />
+        </View>
+
         {loading && (
           <ActivityIndicator
             color={learnColors.yellow}
@@ -182,6 +240,49 @@ export default function LearnDashboard() {
     </SafeAreaView>
   );
 }
+
+const QuickTile = ({
+  emoji,
+  label,
+  color,
+  onPress,
+  testID,
+  darkText = true,
+}: {
+  emoji: string;
+  label: string;
+  color: string;
+  onPress: () => void;
+  testID: string;
+  darkText?: boolean;
+}) => (
+  <Pressable
+    testID={testID}
+    onPress={onPress}
+    style={{
+      flexBasis: "31%",
+      backgroundColor: color,
+      borderRadius: 18,
+      paddingVertical: 14,
+      paddingHorizontal: 10,
+      alignItems: "flex-start",
+      gap: 6,
+      minHeight: 92,
+    }}
+  >
+    <Text style={{ fontSize: 24 }}>{emoji}</Text>
+    <Text
+      style={{
+        fontFamily: fonts.textBold,
+        fontSize: 11,
+        color: darkText ? "#0B0B0F" : "#FFFFFF",
+        lineHeight: 14,
+      }}
+    >
+      {label}
+    </Text>
+  </Pressable>
+);
 
 const makeStyles = () =>
   StyleSheet.create({
@@ -200,6 +301,11 @@ const makeStyles = () =>
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
+    },
+    topRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
     },
     topTitle: {
       fontFamily: fonts.displaySemi,
@@ -333,5 +439,10 @@ const makeStyles = () =>
       fontFamily: fonts.textSemi,
       fontSize: 12,
       color: learnColors.onSurfaceSecondary,
+    },
+    quickGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
     },
   });

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { TEACHERS as SHARED_TEACHERS } from "@/src/learn/data";
 import { fonts } from "@/src/theme";
 import { LearnDock, useLearnDockPadding } from "@/src/learn/LearnDock";
 import { learnColors } from "@/src/learn/theme";
@@ -56,11 +57,6 @@ const CLASSES = [
     duration: "50 min",
     ctaLabel: "Book class",
   },
-];
-
-const TEACHERS = [
-  { name: "Teach Wave", emoji: "🙋‍♀️" },
-  { name: "Academix", emoji: "👩‍🏫" },
 ];
 
 export default function LearnClasses() {
@@ -261,13 +257,19 @@ export default function LearnClasses() {
 
           <Text style={styles.sectionLabel}>Meet the teachers</Text>
           <View style={styles.teacherGrid}>
-            {TEACHERS.map((t) => (
-              <View key={t.name} style={styles.teacherCard}>
-                <View style={styles.teacherPhoto}>
+            {SHARED_TEACHERS.map((t) => (
+              <Pressable
+                key={t.id}
+                testID={`learn-teacher-${t.id}`}
+                onPress={() => router.push(`/learn/teacher/${t.id}`)}
+                style={styles.teacherCard}
+              >
+                <View style={[styles.teacherPhoto, { backgroundColor: t.bg }]}>
                   <Text style={{ fontSize: 44 }}>{t.emoji}</Text>
                 </View>
                 <Text style={styles.teacherCardName}>{t.name}</Text>
-              </View>
+                <Text style={styles.teacherCardSub}>{t.country} · ⭐ {t.rating}</Text>
+              </Pressable>
             ))}
           </View>
         </ScrollView>
@@ -532,5 +534,11 @@ const styles = StyleSheet.create({
     fontFamily: fonts.textBold,
     fontSize: 14,
     color: "#FFFFFF",
+  },
+  teacherCardSub: {
+    fontFamily: fonts.textSemi,
+    fontSize: 11,
+    color: learnColors.onSurfaceSecondary,
+    marginTop: 2,
   },
 });

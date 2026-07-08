@@ -110,7 +110,7 @@ function DockButton({
       <Animated.View style={[styles.btn, btnStyle]}>
         <Ionicons
           name={item.icon}
-          size={22}
+          size={18}
           color={isActive ? ACTIVE_ICON : INACTIVE_ICON}
         />
       </Animated.View>
@@ -143,8 +143,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-around",
     backgroundColor: learnColors.surface,
-    borderRadius: 28,
-    padding: 8,
+    borderRadius: 24,
+    padding: 6,
     borderWidth: 1,
     borderColor: learnColors.border,
     width: "100%",
@@ -163,20 +163,20 @@ const styles = StyleSheet.create({
   btnWrap: {
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 3,
   },
   btn: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: learnColors.surfaceRaised,
   },
   dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: learnColors.orange,
   },
 });
@@ -190,6 +190,6 @@ export default LearnDock;
  */
 export function useLearnDockPadding(extra = 20) {
   const insets = useSafeAreaInsets();
-  // 54 button + 16 padding + 8 gap-above-inset + inset + `extra` breathing
-  return Math.max(insets.bottom, 12) + 8 + 70 + extra;
+  // 44 button + 12 padding + 8 gap-above-inset + inset + `extra` breathing
+  return Math.max(insets.bottom, 12) + 8 + 56 + extra;
 }

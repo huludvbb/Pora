@@ -26,9 +26,22 @@ export default function LearnPlan() {
       {/* Top bar — streak + avatar */}
       <View style={styles.topBar}>
         <View style={{ flex: 1 }} />
-        <View style={styles.streakChip}>
+        <Pressable
+          testID="learn-plan-settings"
+          onPress={() => router.push("/learn/settings")}
+          style={styles.streakChip}
+          hitSlop={8}
+        >
+          <Ionicons name="settings-outline" size={16} color="#FFF" />
+        </Pressable>
+        <Pressable
+          testID="learn-plan-streak"
+          onPress={() => router.push("/learn/stats")}
+          style={styles.streakChip}
+          hitSlop={8}
+        >
           <Text style={{ fontSize: 15 }}>🔥</Text>
-        </View>
+        </Pressable>
         <View style={styles.avatarChip}>
           <Text style={styles.avatarEmoji}>🙂</Text>
         </View>

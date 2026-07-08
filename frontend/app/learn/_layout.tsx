@@ -18,7 +18,7 @@ export default function LearnLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: learnColors.bg },
-          animation: "slide_from_right",
+          animation: "default",
         }}
       />
     </View>

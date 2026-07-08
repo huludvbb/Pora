@@ -58,7 +58,7 @@ export default function LearnExplore() {
           icon={
             <MaterialCommunityIcons name="chip" size={22} color="#0B0B0F" />
           }
-          onPress={() => router.push("/(tabs)/connect")}
+          onPress={() => router.push("/learn/classes")}
         />
         <ExploreCard
           testID="learn-explore-grammar"

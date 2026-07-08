@@ -32,6 +32,13 @@ interface Shortcut {
 
 const SHORTCUTS: Shortcut[] = [
   {
+    key: "premium",
+    label: "Premium",
+    icon: "diamond",
+    color: "#FFB627",
+    route: "/premium",
+  },
+  {
     key: "learn",
     label: "Learn",
     icon: "school",

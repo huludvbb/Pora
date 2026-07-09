@@ -28,6 +28,13 @@ follows_col = db["follows"]
 config_col = db["app_config"]
 market_config_col = db["market_config"]
 
+# --- Pro (1-on-1 video tutoring sub-app) collections ---
+pro_profiles_col = db["pro_profiles"]
+pro_sessions_col = db["pro_sessions"]
+pro_transcripts_col = db["pro_transcripts"]
+pro_wallets_col = db["pro_wallets"]
+pro_availability_col = db["pro_availability"]
+
 
 async def ensure_indexes():
     """Idempotent index creation. Each index is attempted independently so a

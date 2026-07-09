@@ -1,583 +1,663 @@
 """
-Backend testing for Learn module - Round 19
-Tests all /api/learn/* endpoints with comprehensive coverage
+Backend test suite for Pro sub-app API endpoints.
+Tests all /api/pro endpoints with authentication and edge cases.
 """
 
 import requests
 import json
 from typing import Optional
 
-# Backend URL from frontend/.env
-BASE_URL = "https://chat-premium-colors.preview.emergentagent.com/api"
+# Base URL from frontend .env
+BASE_URL = "https://d8b2b820-9fd7-4169-93af-78c5f896db15.preview.emergentagent.com/api"
 
 # Test credentials
-MEI_EMAIL = "mei@demo.com"
-MEI_PASSWORD = "Demo1234!"
-DIEGO_EMAIL = "diego@demo.com"
-DIEGO_PASSWORD = "Demo1234!"
+STUDENT_EMAIL = "mei@demo.com"
+STUDENT_PASSWORD = "Demo1234!"
+SECOND_USER_EMAIL = "diego@demo.com"
+SECOND_USER_PASSWORD = "Demo1234!"
+
 
 class TestResult:
     def __init__(self):
-        self.passed = []
-        self.failed = []
-        self.warnings = []
+        self.passed = 0
+        self.failed = 0
+        self.errors = []
     
-    def add_pass(self, test_name: str, details: str = ""):
-        self.passed.append(f"✅ {test_name}: {details}")
+    def add_pass(self, test_name: str):
+        self.passed += 1
+        print(f"✅ PASS: {test_name}")
     
-    def add_fail(self, test_name: str, details: str):
-        self.failed.append(f"❌ {test_name}: {details}")
+    def add_fail(self, test_name: str, error: str):
+        self.failed += 1
+        self.errors.append(f"{test_name}: {error}")
+        print(f"❌ FAIL: {test_name}")
+        print(f"   Error: {error}")
     
-    def add_warning(self, test_name: str, details: str):
-        self.warnings.append(f"⚠️  {test_name}: {details}")
-    
-    def print_summary(self):
-        print("\n" + "="*80)
-        print("LEARN MODULE BACKEND TEST RESULTS")
-        print("="*80)
-        
-        if self.passed:
-            print(f"\n✅ PASSED ({len(self.passed)}):")
-            for p in self.passed:
-                print(f"  {p}")
-        
-        if self.failed:
-            print(f"\n❌ FAILED ({len(self.failed)}):")
-            for f in self.failed:
-                print(f"  {f}")
-        
-        if self.warnings:
-            print(f"\n⚠️  WARNINGS ({len(self.warnings)}):")
-            for w in self.warnings:
-                print(f"  {w}")
-        
-        print(f"\n{'='*80}")
-        print(f"TOTAL: {len(self.passed)} passed, {len(self.failed)} failed, {len(self.warnings)} warnings")
-        print("="*80 + "\n")
+    def summary(self):
+        total = self.passed + self.failed
+        print(f"\n{'='*60}")
+        print(f"TEST SUMMARY: {self.passed}/{total} passed")
+        print(f"{'='*60}")
+        if self.errors:
+            print("\nFailed tests:")
+            for error in self.errors:
+                print(f"  - {error}")
+        return self.failed == 0
 
-result = TestResult()
 
 def login(email: str, password: str) -> Optional[str]:
-    """Login and return JWT token"""
+    """Login and return JWT token."""
     try:
-        resp = requests.post(
+        response = requests.post(
             f"{BASE_URL}/auth/login",
             json={"email": email, "password": password},
             timeout=10
         )
-        if resp.status_code == 200:
-            return resp.json().get("token")
+        if response.status_code == 200:
+            return response.json().get("token")
         else:
-            print(f"Login failed for {email}: {resp.status_code} - {resp.text}")
+            print(f"Login failed for {email}: {response.status_code} - {response.text}")
             return None
     except Exception as e:
-        print(f"Login exception for {email}: {e}")
+        print(f"Login error for {email}: {e}")
         return None
 
-def test_status_endpoint(token: str):
-    """Test A: GET /api/learn/status"""
-    print("\n[TEST A] Status endpoint")
-    
-    # A1: Basic status call
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/learn/status",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            required_keys = ["language", "due_count", "mistakes_count", "mastered_count", "total_vocab", "streak_days"]
-            missing_keys = [k for k in required_keys if k not in data]
-            
-            if missing_keys:
-                result.add_fail("A1: Status keys", f"Missing keys: {missing_keys}")
-            else:
-                # Verify types
-                type_checks = [
-                    (isinstance(data["language"], str), "language should be str"),
-                    (isinstance(data["due_count"], int), "due_count should be int"),
-                    (isinstance(data["mistakes_count"], int), "mistakes_count should be int"),
-                    (isinstance(data["mastered_count"], int), "mastered_count should be int"),
-                    (isinstance(data["total_vocab"], int), "total_vocab should be int"),
-                    (isinstance(data["streak_days"], int), "streak_days should be int"),
-                ]
-                
-                type_errors = [msg for check, msg in type_checks if not check]
-                if type_errors:
-                    result.add_fail("A1: Status types", f"Type errors: {type_errors}")
-                else:
-                    result.add_pass("A1: Status basic", f"All keys present with correct types. language={data['language']}, total_vocab={data['total_vocab']}")
-        else:
-            result.add_fail("A1: Status basic", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("A1: Status basic", f"Exception: {e}")
-    
-    # A2: Status with language=es
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/learn/status?language=es",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("language") == "es":
-                if data.get("total_vocab", 0) >= 8:
-                    result.add_pass("A2: Status language=es", f"language='es', total_vocab={data['total_vocab']} (>= 8)")
-                else:
-                    result.add_fail("A2: Status language=es", f"total_vocab={data['total_vocab']}, expected >= 8")
-            else:
-                result.add_fail("A2: Status language=es", f"language={data.get('language')}, expected 'es'")
-        else:
-            result.add_fail("A2: Status language=es", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("A2: Status language=es", f"Exception: {e}")
 
-def test_session_endpoint(token: str) -> Optional[str]:
-    """Test B: GET /api/learn/session - returns first vocab_id for later tests"""
-    print("\n[TEST B] Session endpoint")
+def test_pro_endpoints():
+    """Test all Pro sub-app endpoints."""
+    result = TestResult()
     
-    first_vocab_id = None
-    
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/learn/session?language=en",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            # B1: Check response structure
-            if "language" not in data or "cards" not in data:
-                result.add_fail("B1: Session structure", f"Missing 'language' or 'cards' key")
-                return None
-            
-            if data["language"] != "en":
-                result.add_fail("B1: Session language", f"Expected language='en', got '{data['language']}'")
-                return None
-            
-            cards = data["cards"]
-            if not isinstance(cards, list):
-                result.add_fail("B1: Session cards type", f"cards should be list, got {type(cards)}")
-                return None
-            
-            # B2: Check cards length
-            if len(cards) > 20:
-                result.add_fail("B2: Session cards length", f"cards length {len(cards)} > 20")
-            else:
-                result.add_pass("B2: Session cards length", f"cards length={len(cards)} (<= 20)")
-            
-            # B3: Check card structure
-            if len(cards) > 0:
-                card = cards[0]
-                required_card_keys = ["vocab_id", "word", "meaning", "language", "level", "is_new", "streak"]
-                missing_card_keys = [k for k in required_card_keys if k not in card]
-                
-                if missing_card_keys:
-                    result.add_fail("B3: Card structure", f"Missing keys in card: {missing_card_keys}")
-                else:
-                    # Check types
-                    type_checks = [
-                        (isinstance(card["vocab_id"], str), "vocab_id should be str"),
-                        (isinstance(card["word"], str), "word should be str"),
-                        (isinstance(card["meaning"], str), "meaning should be str"),
-                        (card["language"] == "en", "language should be 'en'"),
-                        (isinstance(card["is_new"], bool), "is_new should be bool"),
-                        (isinstance(card["streak"], int), "streak should be int"),
-                    ]
-                    
-                    type_errors = [msg for check, msg in type_checks if not check]
-                    if type_errors:
-                        result.add_fail("B3: Card types", f"Type errors: {type_errors}")
-                    else:
-                        first_vocab_id = card["vocab_id"]
-                        result.add_pass("B3: Card structure", f"All card keys present with correct types. word='{card['word']}', is_new={card['is_new']}")
-                        
-                        # B4: Check is_new status (informational)
-                        new_count = sum(1 for c in cards if c.get("is_new"))
-                        result.add_pass("B4: Card is_new status", f"{new_count}/{len(cards)} cards are new")
-            else:
-                result.add_warning("B3: Card structure", "No cards returned, cannot verify card structure")
-            
-            return first_vocab_id
-        else:
-            result.add_fail("B1: Session request", f"Expected 200, got {resp.status_code}: {resp.text}")
-            return None
-    except Exception as e:
-        result.add_fail("B1: Session request", f"Exception: {e}")
-        return None
-
-def test_review_endpoint(token: str, vocab_id: str):
-    """Test C: POST /api/learn/review"""
-    print("\n[TEST C] Review endpoint")
-    
-    if not vocab_id:
-        result.add_fail("C: Review tests", "No vocab_id available from session")
-        return
-    
-    # C1: Review with grade="correct"
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/learn/review",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"vocab_id": vocab_id, "grade": "correct"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            # Check response fields
-            if data.get("streak") == 1 and data.get("interval_days", 0) >= 1 and data.get("last_result") == "correct":
-                next_review = data.get("next_review")
-                if next_review and isinstance(next_review, str):
-                    result.add_pass("C1: Review correct", f"streak=1, interval_days={data['interval_days']}, next_review={next_review[:19]}, last_result='correct'")
-                else:
-                    result.add_fail("C1: Review correct", f"next_review is missing or invalid: {next_review}")
-            else:
-                result.add_fail("C1: Review correct", f"Unexpected values: streak={data.get('streak')}, interval_days={data.get('interval_days')}, last_result={data.get('last_result')}")
-        else:
-            result.add_fail("C1: Review correct", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("C1: Review correct", f"Exception: {e}")
-    
-    # C2: Review with grade="wrong"
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/learn/review",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"vocab_id": vocab_id, "grade": "wrong"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            if data.get("streak") == 0 and data.get("interval_days") == 0 and data.get("last_result") == "wrong":
-                result.add_pass("C2: Review wrong", f"streak=0, interval_days=0, last_result='wrong'")
-            else:
-                result.add_fail("C2: Review wrong", f"Unexpected values: streak={data.get('streak')}, interval_days={data.get('interval_days')}, last_result={data.get('last_result')}")
-        else:
-            result.add_fail("C2: Review wrong", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("C2: Review wrong", f"Exception: {e}")
-    
-    # C3: Review with grade="hard"
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/learn/review",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"vocab_id": vocab_id, "grade": "hard"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            if data.get("last_result") == "hard" and data.get("streak") == 0:
-                result.add_pass("C3: Review hard", f"last_result='hard', streak=0 (grade!=correct resets streak)")
-            else:
-                result.add_fail("C3: Review hard", f"Unexpected values: last_result={data.get('last_result')}, streak={data.get('streak')}")
-        else:
-            result.add_fail("C3: Review hard", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("C3: Review hard", f"Exception: {e}")
-    
-    # C4: Review with grade="correct" again
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/learn/review",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"vocab_id": vocab_id, "grade": "correct"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            if data.get("streak") == 1:
-                result.add_pass("C4: Review correct again", f"streak=1 (reset from previous correct)")
-            else:
-                result.add_fail("C4: Review correct again", f"Expected streak=1, got {data.get('streak')}")
-        else:
-            result.add_fail("C4: Review correct again", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("C4: Review correct again", f"Exception: {e}")
-
-def test_review_edge_cases(token: str):
-    """Test D: Review edge cases"""
-    print("\n[TEST D] Review edge cases")
-    
-    # D1: Unknown vocab_id
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/learn/review",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"vocab_id": "nonexistent-id-xyz", "grade": "correct"},
-            timeout=10
-        )
-        
-        if resp.status_code == 404:
-            detail = resp.json().get("detail", "")
-            if "not found" in detail.lower():
-                result.add_pass("D1: Unknown vocab_id", f"404 with message: '{detail}'")
-            else:
-                result.add_warning("D1: Unknown vocab_id", f"404 but unexpected message: '{detail}'")
-        else:
-            result.add_fail("D1: Unknown vocab_id", f"Expected 404, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("D1: Unknown vocab_id", f"Exception: {e}")
-    
-    # D2: Invalid grade
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/learn/review",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"vocab_id": "any-id", "grade": "maybe"},
-            timeout=10
-        )
-        
-        if resp.status_code == 422:
-            result.add_pass("D2: Invalid grade", f"422 validation error for grade='maybe'")
-        else:
-            result.add_fail("D2: Invalid grade", f"Expected 422, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("D2: Invalid grade", f"Exception: {e}")
-
-def test_vocabulary_endpoint(token: str):
-    """Test E: GET /api/learn/vocabulary"""
-    print("\n[TEST E] Vocabulary list")
-    
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/learn/vocabulary?language=en",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            if not isinstance(data, list):
-                result.add_fail("E1: Vocabulary type", f"Expected list, got {type(data)}")
-                return
-            
-            if len(data) == 0:
-                result.add_warning("E1: Vocabulary list", "Empty vocabulary list")
-                return
-            
-            # Check structure of first item
-            item = data[0]
-            required_keys = ["id", "word", "meaning", "language", "level", "seen", "streak", "last_result"]
-            missing_keys = [k for k in required_keys if k not in item]
-            
-            if missing_keys:
-                result.add_fail("E1: Vocabulary structure", f"Missing keys: {missing_keys}")
-            else:
-                # Check types
-                type_checks = [
-                    (isinstance(item["id"], str), "id should be str"),
-                    (isinstance(item["word"], str), "word should be str"),
-                    (isinstance(item["meaning"], str), "meaning should be str"),
-                    (item["language"] == "en", "language should be 'en'"),
-                    (isinstance(item["seen"], bool), "seen should be bool"),
-                    (isinstance(item["streak"], int), "streak should be int"),
-                ]
-                
-                type_errors = [msg for check, msg in type_checks if not check]
-                if type_errors:
-                    result.add_fail("E1: Vocabulary types", f"Type errors: {type_errors}")
-                else:
-                    result.add_pass("E1: Vocabulary structure", f"All keys present with correct types. Total items: {len(data)}")
-            
-            # E2: Check if any item has seen=true (after previous reviews)
-            seen_items = [i for i in data if i.get("seen")]
-            if seen_items:
-                result.add_pass("E2: Vocabulary seen status", f"{len(seen_items)}/{len(data)} items have seen=true")
-            else:
-                result.add_warning("E2: Vocabulary seen status", "No items with seen=true (expected at least one after reviews)")
-        else:
-            result.add_fail("E1: Vocabulary request", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("E1: Vocabulary request", f"Exception: {e}")
-
-def test_mistakes_endpoint(token: str):
-    """Test F: GET /api/learn/mistakes"""
-    print("\n[TEST F] Mistakes endpoint")
-    
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/learn/mistakes",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            if not isinstance(data, list):
-                result.add_fail("F1: Mistakes type", f"Expected list, got {type(data)}")
-                return
-            
-            # After marking a word wrong in test C2, we should have at least one mistake
-            if len(data) > 0:
-                result.add_pass("F1: Mistakes list", f"Found {len(data)} mistake(s) after marking word wrong")
-                
-                # Check structure
-                item = data[0]
-                if "vocab_id" in item and "word" in item and "meaning" in item:
-                    result.add_pass("F2: Mistakes structure", f"Mistake item has required fields: word='{item.get('word')}'")
-                else:
-                    result.add_fail("F2: Mistakes structure", f"Missing required fields in mistake item")
-            else:
-                result.add_warning("F1: Mistakes list", "No mistakes found (expected at least one after test C2)")
-        else:
-            result.add_fail("F1: Mistakes request", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("F1: Mistakes request", f"Exception: {e}")
-
-def test_collections_endpoint(token: str):
-    """Test G: Collections endpoints"""
-    print("\n[TEST G] Collections endpoints")
-    
-    # G1: Create collection
-    collection_id = None
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/learn/collections",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"name": "My Favorite Words", "language": "en", "vocab_ids": ["x", "y", "z"]},
-            timeout=10
-        )
-        
-        if resp.status_code == 201:
-            data = resp.json()
-            
-            required_keys = ["id", "name", "language", "count", "created_at"]
-            missing_keys = [k for k in required_keys if k not in data]
-            
-            if missing_keys:
-                result.add_fail("G1: Create collection", f"Missing keys: {missing_keys}")
-            else:
-                if data["name"] == "My Favorite Words" and data["language"] == "en" and data["count"] == 3:
-                    collection_id = data["id"]
-                    result.add_pass("G1: Create collection", f"Created collection: name='{data['name']}', language='en', count=3, id={collection_id}")
-                else:
-                    result.add_fail("G1: Create collection", f"Unexpected values: name={data['name']}, language={data['language']}, count={data['count']}")
-        else:
-            result.add_fail("G1: Create collection", f"Expected 201, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("G1: Create collection", f"Exception: {e}")
-    
-    # G2: List collections
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/learn/collections",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            if not isinstance(data, list):
-                result.add_fail("G2: List collections type", f"Expected list, got {type(data)}")
-            else:
-                # Find our created collection
-                found = any(c.get("name") == "My Favorite Words" and c.get("count") == 3 for c in data)
-                if found:
-                    result.add_pass("G2: List collections", f"Found 'My Favorite Words' collection in list (total: {len(data)} collections)")
-                else:
-                    result.add_fail("G2: List collections", f"'My Favorite Words' collection not found in list")
-        else:
-            result.add_fail("G2: List collections", f"Expected 200, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("G2: List collections", f"Exception: {e}")
-    
-    # G3: Create collection with empty name (should fail)
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/learn/collections",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"name": "", "language": "en", "vocab_ids": []},
-            timeout=10
-        )
-        
-        if resp.status_code == 422:
-            result.add_pass("G3: Empty name validation", "422 validation error for empty name")
-        else:
-            result.add_fail("G3: Empty name validation", f"Expected 422, got {resp.status_code}: {resp.text}")
-    except Exception as e:
-        result.add_fail("G3: Empty name validation", f"Exception: {e}")
-
-def test_auth_required():
-    """Test H: Auth required on all endpoints"""
-    print("\n[TEST H] Auth required")
-    
-    endpoints = [
-        ("GET", "/learn/status"),
-        ("GET", "/learn/session"),
-        ("POST", "/learn/review", {"vocab_id": "test", "grade": "correct"}),
-        ("GET", "/learn/vocabulary"),
-        ("GET", "/learn/mistakes"),
-        ("GET", "/learn/collections"),
-        ("POST", "/learn/collections", {"name": "Test"}),
-    ]
-    
-    failed_auth = []
-    for method, path, *body in endpoints:
-        try:
-            if method == "GET":
-                resp = requests.get(f"{BASE_URL}{path}", timeout=10)
-            else:
-                resp = requests.post(f"{BASE_URL}{path}", json=body[0] if body else {}, timeout=10)
-            
-            if resp.status_code not in [401, 403]:
-                failed_auth.append(f"{method} {path} returned {resp.status_code} (expected 401/403)")
-        except Exception as e:
-            failed_auth.append(f"{method} {path} exception: {e}")
-    
-    if failed_auth:
-        result.add_fail("H: Auth required", f"Some endpoints don't require auth: {failed_auth}")
-    else:
-        result.add_pass("H: Auth required", f"All {len(endpoints)} endpoints correctly require authentication (401/403)")
-
-def main():
-    print("="*80)
-    print("LEARN MODULE BACKEND TESTING - ROUND 19")
-    print("="*80)
-    print(f"Backend URL: {BASE_URL}")
-    print(f"Test user: {MEI_EMAIL}")
-    
-    # Login
-    print("\n[SETUP] Logging in as mei@demo.com...")
-    mei_token = login(MEI_EMAIL, MEI_PASSWORD)
-    
+    # Login as student user (mei)
+    print("\n" + "="*60)
+    print("LOGGING IN AS STUDENT USER (mei@demo.com)")
+    print("="*60)
+    mei_token = login(STUDENT_EMAIL, STUDENT_PASSWORD)
     if not mei_token:
-        print("❌ CRITICAL: Failed to login as mei@demo.com")
-        result.add_fail("Setup", "Failed to login as mei@demo.com")
-        result.print_summary()
-        return
+        result.add_fail("Login mei@demo.com", "Failed to get token")
+        return result
+    result.add_pass("Login mei@demo.com")
     
-    print("✅ Login successful")
+    headers_mei = {"Authorization": f"Bearer {mei_token}"}
     
-    # Run all tests
-    test_status_endpoint(mei_token)
-    first_vocab_id = test_session_endpoint(mei_token)
-    test_review_endpoint(mei_token, first_vocab_id)
-    test_review_edge_cases(mei_token)
-    test_vocabulary_endpoint(mei_token)
-    test_mistakes_endpoint(mei_token)
-    test_collections_endpoint(mei_token)
-    test_auth_required()
+    # Login as second user (diego)
+    print("\n" + "="*60)
+    print("LOGGING IN AS SECOND USER (diego@demo.com)")
+    print("="*60)
+    diego_token = login(SECOND_USER_EMAIL, SECOND_USER_PASSWORD)
+    if not diego_token:
+        result.add_fail("Login diego@demo.com", "Failed to get token")
+        return result
+    result.add_pass("Login diego@demo.com")
     
-    # Print summary
-    result.print_summary()
+    headers_diego = {"Authorization": f"Bearer {diego_token}"}
+    
+    # Test 1: GET /api/pro/me - auto-create profile and wallet
+    print("\n" + "="*60)
+    print("TEST 1: GET /api/pro/me (auto-create profile)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/me", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if "profile" in data and "wallet" in data:
+                profile = data["profile"]
+                wallet = data["wallet"]
+                if (wallet.get("balance") == 60 and 
+                    wallet.get("currency") == "MIN" and 
+                    profile.get("role") == "student"):
+                    result.add_pass("GET /api/pro/me - auto-create profile with wallet")
+                    mei_profile_id = profile.get("id")
+                else:
+                    result.add_fail("GET /api/pro/me", f"Unexpected values: wallet={wallet}, role={profile.get('role')}")
+            else:
+                result.add_fail("GET /api/pro/me", f"Missing profile or wallet in response: {data}")
+        else:
+            result.add_fail("GET /api/pro/me", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/me", str(e))
+    
+    # Test 2: PUT /api/pro/me - update profile
+    print("\n" + "="*60)
+    print("TEST 2: PUT /api/pro/me (update profile)")
+    print("="*60)
+    try:
+        update_data = {
+            "bio": "Test bio for Pro app",
+            "native_accent": "American",
+            "teaches": ["en", "es"],
+            "specialties": ["Business", "Conversation"],
+            "languages": ["ja", "ko"],
+            "hourly_rate": 25.5,
+            "video_intro_url": "https://example.com/video.mp4"
+        }
+        response = requests.put(f"{BASE_URL}/pro/me", headers=headers_mei, json=update_data, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if (data.get("bio") == update_data["bio"] and
+                data.get("native_accent") == update_data["native_accent"] and
+                data.get("hourly_rate") == update_data["hourly_rate"]):
+                result.add_pass("PUT /api/pro/me - update and persist fields")
+            else:
+                result.add_fail("PUT /api/pro/me", f"Fields not updated correctly: {data}")
+        else:
+            result.add_fail("PUT /api/pro/me", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("PUT /api/pro/me", str(e))
+    
+    # Test 3: GET /api/pro/me again to verify persistence
+    print("\n" + "="*60)
+    print("TEST 3: GET /api/pro/me (verify persistence)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/me", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            profile = data.get("profile", {})
+            if (profile.get("bio") == "Test bio for Pro app" and
+                profile.get("native_accent") == "American" and
+                profile.get("hourly_rate") == 25.5):
+                result.add_pass("GET /api/pro/me - verify persistence")
+            else:
+                result.add_fail("GET /api/pro/me persistence", f"Fields not persisted: {profile}")
+        else:
+            result.add_fail("GET /api/pro/me persistence", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/me persistence", str(e))
+    
+    # Test 4: POST /api/pro/role - change to tutor
+    print("\n" + "="*60)
+    print("TEST 4: POST /api/pro/role (change to tutor)")
+    print("="*60)
+    try:
+        response = requests.post(f"{BASE_URL}/pro/role", headers=headers_mei, json={"role": "tutor"}, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("role") == "tutor":
+                result.add_pass("POST /api/pro/role - change to tutor")
+            else:
+                result.add_fail("POST /api/pro/role tutor", f"Role not changed: {data.get('role')}")
+        else:
+            result.add_fail("POST /api/pro/role tutor", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("POST /api/pro/role tutor", str(e))
+    
+    # Test 5: POST /api/pro/role - change back to student
+    print("\n" + "="*60)
+    print("TEST 5: POST /api/pro/role (change back to student)")
+    print("="*60)
+    try:
+        response = requests.post(f"{BASE_URL}/pro/role", headers=headers_mei, json={"role": "student"}, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("role") == "student":
+                result.add_pass("POST /api/pro/role - change to student")
+            else:
+                result.add_fail("POST /api/pro/role student", f"Role not changed: {data.get('role')}")
+        else:
+            result.add_fail("POST /api/pro/role student", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("POST /api/pro/role student", str(e))
+    
+    # Test 6: POST /api/pro/role - invalid role (should 422)
+    print("\n" + "="*60)
+    print("TEST 6: POST /api/pro/role (invalid role - expect 422)")
+    print("="*60)
+    try:
+        response = requests.post(f"{BASE_URL}/pro/role", headers=headers_mei, json={"role": "admin"}, timeout=10)
+        if response.status_code == 422:
+            result.add_pass("POST /api/pro/role - invalid role returns 422")
+        else:
+            result.add_fail("POST /api/pro/role invalid", f"Expected 422, got {response.status_code}")
+    except Exception as e:
+        result.add_fail("POST /api/pro/role invalid", str(e))
+    
+    # Test 7: GET /api/pro/tutors - list all tutors (should be 8)
+    print("\n" + "="*60)
+    print("TEST 7: GET /api/pro/tutors (list all - expect 8)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/tutors", timeout=10)
+        if response.status_code == 200:
+            tutors = response.json()
+            if len(tutors) == 8:
+                # Check sorting: featured and higher-rated first
+                if tutors[0].get("featured") or tutors[0].get("rating", 0) >= 4.8:
+                    result.add_pass("GET /api/pro/tutors - returns 8 tutors with correct sorting")
+                else:
+                    result.add_fail("GET /api/pro/tutors sorting", f"First tutor not featured/high-rated: {tutors[0]}")
+            else:
+                result.add_fail("GET /api/pro/tutors", f"Expected 8 tutors, got {len(tutors)}")
+        else:
+            result.add_fail("GET /api/pro/tutors", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/tutors", str(e))
+    
+    # Test 8: GET /api/pro/tutors?language=en - filter by language
+    print("\n" + "="*60)
+    print("TEST 8: GET /api/pro/tutors?language=en (filter English)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/tutors?language=en", timeout=10)
+        if response.status_code == 200:
+            tutors = response.json()
+            if all("en" in t.get("teaches", []) for t in tutors):
+                result.add_pass(f"GET /api/pro/tutors?language=en - returns only English tutors ({len(tutors)} found)")
+            else:
+                result.add_fail("GET /api/pro/tutors language filter", "Some tutors don't teach English")
+        else:
+            result.add_fail("GET /api/pro/tutors language filter", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/tutors language filter", str(e))
+    
+    # Test 9: GET /api/pro/tutors?q=business - search filter
+    print("\n" + "="*60)
+    print("TEST 9: GET /api/pro/tutors?q=business (search)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/tutors?q=business", timeout=10)
+        if response.status_code == 200:
+            tutors = response.json()
+            if len(tutors) > 0:
+                # Check if results contain "business" in name, bio, or specialties
+                valid = all(
+                    "business" in t.get("name", "").lower() or
+                    "business" in t.get("bio", "").lower() or
+                    any("business" in s.lower() for s in t.get("specialties", []))
+                    for t in tutors
+                )
+                if valid:
+                    result.add_pass(f"GET /api/pro/tutors?q=business - returns matching tutors ({len(tutors)} found)")
+                else:
+                    result.add_fail("GET /api/pro/tutors search", "Some results don't match search term")
+            else:
+                result.add_fail("GET /api/pro/tutors search", "No results found for 'business'")
+        else:
+            result.add_fail("GET /api/pro/tutors search", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/tutors search", str(e))
+    
+    # Test 10: GET /api/pro/tutors/{id} - get specific tutor
+    print("\n" + "="*60)
+    print("TEST 10: GET /api/pro/tutors/{id} (valid tutor)")
+    print("="*60)
+    try:
+        # First get a tutor ID
+        response = requests.get(f"{BASE_URL}/pro/tutors", timeout=10)
+        if response.status_code == 200:
+            tutors = response.json()
+            if len(tutors) > 0:
+                tutor_id = tutors[0]["id"]
+                response = requests.get(f"{BASE_URL}/pro/tutors/{tutor_id}", timeout=10)
+                if response.status_code == 200:
+                    tutor = response.json()
+                    if tutor.get("id") == tutor_id:
+                        result.add_pass("GET /api/pro/tutors/{id} - returns tutor details")
+                    else:
+                        result.add_fail("GET /api/pro/tutors/{id}", f"Wrong tutor returned: {tutor.get('id')}")
+                else:
+                    result.add_fail("GET /api/pro/tutors/{id}", f"Status {response.status_code}: {response.text}")
+            else:
+                result.add_fail("GET /api/pro/tutors/{id}", "No tutors available to test")
+        else:
+            result.add_fail("GET /api/pro/tutors/{id}", "Failed to get tutor list")
+    except Exception as e:
+        result.add_fail("GET /api/pro/tutors/{id}", str(e))
+    
+    # Test 11: GET /api/pro/tutors/{id} - invalid ID (should 404)
+    print("\n" + "="*60)
+    print("TEST 11: GET /api/pro/tutors/{id} (invalid - expect 404)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/tutors/nonexistent-id-12345", timeout=10)
+        if response.status_code == 404:
+            result.add_pass("GET /api/pro/tutors/{invalid_id} - returns 404")
+        else:
+            result.add_fail("GET /api/pro/tutors/{invalid_id}", f"Expected 404, got {response.status_code}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/tutors/{invalid_id}", str(e))
+    
+    # Test 12: POST /api/pro/match - instant match (no params)
+    print("\n" + "="*60)
+    print("TEST 12: POST /api/pro/match (instant match)")
+    print("="*60)
+    try:
+        response = requests.post(f"{BASE_URL}/pro/match", headers=headers_mei, json={}, timeout=10)
+        if response.status_code == 200:
+            session = response.json()
+            if (session.get("status") == "active" and
+                session.get("stream_room_token") and
+                session.get("tutor")):
+                result.add_pass("POST /api/pro/match - instant match creates active session")
+                mei_session_id = session.get("id")
+            else:
+                result.add_fail("POST /api/pro/match instant", f"Invalid session: {session}")
+        else:
+            result.add_fail("POST /api/pro/match instant", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("POST /api/pro/match instant", str(e))
+    
+    # Test 13: POST /api/pro/match - match with language filter
+    print("\n" + "="*60)
+    print("TEST 13: POST /api/pro/match (language=ja)")
+    print("="*60)
+    try:
+        response = requests.post(f"{BASE_URL}/pro/match", headers=headers_mei, json={"language": "ja"}, timeout=10)
+        if response.status_code == 200:
+            session = response.json()
+            tutor = session.get("tutor", {})
+            if "ja" in tutor.get("teaches", []):
+                result.add_pass("POST /api/pro/match language=ja - matches Japanese tutor")
+            else:
+                result.add_fail("POST /api/pro/match language", f"Tutor doesn't teach Japanese: {tutor.get('teaches')}")
+        else:
+            result.add_fail("POST /api/pro/match language", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("POST /api/pro/match language", str(e))
+    
+    # Test 14: POST /api/pro/match - match with specific tutor_id
+    print("\n" + "="*60)
+    print("TEST 14: POST /api/pro/match (specific tutor_id)")
+    print("="*60)
+    try:
+        # Get a tutor ID first
+        response = requests.get(f"{BASE_URL}/pro/tutors", timeout=10)
+        if response.status_code == 200:
+            tutors = response.json()
+            if len(tutors) > 0:
+                tutor_id = tutors[0]["id"]
+                response = requests.post(f"{BASE_URL}/pro/match", headers=headers_mei, json={"tutor_id": tutor_id}, timeout=10)
+                if response.status_code == 200:
+                    session = response.json()
+                    if session.get("tutor", {}).get("id") == tutor_id:
+                        result.add_pass("POST /api/pro/match tutor_id - books specific tutor")
+                    else:
+                        result.add_fail("POST /api/pro/match tutor_id", f"Wrong tutor matched: {session.get('tutor', {}).get('id')}")
+                else:
+                    result.add_fail("POST /api/pro/match tutor_id", f"Status {response.status_code}: {response.text}")
+            else:
+                result.add_fail("POST /api/pro/match tutor_id", "No tutors available")
+        else:
+            result.add_fail("POST /api/pro/match tutor_id", "Failed to get tutor list")
+    except Exception as e:
+        result.add_fail("POST /api/pro/match tutor_id", str(e))
+    
+    # Test 15: POST /api/pro/match - nonexistent tutor_id (should 404)
+    print("\n" + "="*60)
+    print("TEST 15: POST /api/pro/match (nonexistent tutor - expect 404)")
+    print("="*60)
+    try:
+        response = requests.post(f"{BASE_URL}/pro/match", headers=headers_mei, json={"tutor_id": "nonexistent"}, timeout=10)
+        if response.status_code == 404:
+            result.add_pass("POST /api/pro/match nonexistent tutor - returns 404")
+        else:
+            result.add_fail("POST /api/pro/match nonexistent", f"Expected 404, got {response.status_code}")
+    except Exception as e:
+        result.add_fail("POST /api/pro/match nonexistent", str(e))
+    
+    # Test 16: GET /api/pro/sessions - list user's sessions
+    print("\n" + "="*60)
+    print("TEST 16: GET /api/pro/sessions (list sessions)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/sessions", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            sessions = response.json()
+            if len(sessions) >= 1:  # Should have at least the sessions we created
+                result.add_pass(f"GET /api/pro/sessions - returns sessions ({len(sessions)} found)")
+                # Store a session ID for later tests
+                test_session_id = sessions[0]["id"]
+            else:
+                result.add_fail("GET /api/pro/sessions", "No sessions found")
+        else:
+            result.add_fail("GET /api/pro/sessions", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/sessions", str(e))
+    
+    # Test 17: GET /api/pro/sessions/{id} - owner can fetch
+    print("\n" + "="*60)
+    print("TEST 17: GET /api/pro/sessions/{id} (owner access)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/sessions", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            sessions = response.json()
+            if len(sessions) > 0:
+                session_id = sessions[0]["id"]
+                response = requests.get(f"{BASE_URL}/pro/sessions/{session_id}", headers=headers_mei, timeout=10)
+                if response.status_code == 200:
+                    session = response.json()
+                    if session.get("id") == session_id:
+                        result.add_pass("GET /api/pro/sessions/{id} - owner can fetch")
+                    else:
+                        result.add_fail("GET /api/pro/sessions/{id} owner", f"Wrong session: {session.get('id')}")
+                else:
+                    result.add_fail("GET /api/pro/sessions/{id} owner", f"Status {response.status_code}: {response.text}")
+            else:
+                result.add_fail("GET /api/pro/sessions/{id} owner", "No sessions to test")
+        else:
+            result.add_fail("GET /api/pro/sessions/{id} owner", "Failed to get sessions")
+    except Exception as e:
+        result.add_fail("GET /api/pro/sessions/{id} owner", str(e))
+    
+    # Test 18: GET /api/pro/sessions/{id} - different user gets 403
+    print("\n" + "="*60)
+    print("TEST 18: GET /api/pro/sessions/{id} (different user - expect 403)")
+    print("="*60)
+    try:
+        # Get mei's session
+        response = requests.get(f"{BASE_URL}/pro/sessions", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            sessions = response.json()
+            if len(sessions) > 0:
+                session_id = sessions[0]["id"]
+                # Try to access with diego's token
+                response = requests.get(f"{BASE_URL}/pro/sessions/{session_id}", headers=headers_diego, timeout=10)
+                if response.status_code == 403:
+                    result.add_pass("GET /api/pro/sessions/{id} - different user gets 403")
+                else:
+                    result.add_fail("GET /api/pro/sessions/{id} 403", f"Expected 403, got {response.status_code}")
+            else:
+                result.add_fail("GET /api/pro/sessions/{id} 403", "No sessions to test")
+        else:
+            result.add_fail("GET /api/pro/sessions/{id} 403", "Failed to get sessions")
+    except Exception as e:
+        result.add_fail("GET /api/pro/sessions/{id} 403", str(e))
+    
+    # Test 19: GET /api/pro/sessions/{id} - nonexistent ID (should 404)
+    print("\n" + "="*60)
+    print("TEST 19: GET /api/pro/sessions/{id} (nonexistent - expect 404)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/sessions/nonexistent-id", headers=headers_mei, timeout=10)
+        if response.status_code == 404:
+            result.add_pass("GET /api/pro/sessions/{nonexistent} - returns 404")
+        else:
+            result.add_fail("GET /api/pro/sessions/{nonexistent}", f"Expected 404, got {response.status_code}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/sessions/{nonexistent}", str(e))
+    
+    # Test 20: POST /api/pro/sessions/{id}/end - end session
+    print("\n" + "="*60)
+    print("TEST 20: POST /api/pro/sessions/{id}/end (end session)")
+    print("="*60)
+    try:
+        # Get an active session
+        response = requests.get(f"{BASE_URL}/pro/sessions", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            sessions = response.json()
+            active_session = next((s for s in sessions if s.get("status") == "active"), None)
+            if active_session:
+                session_id = active_session["id"]
+                response = requests.post(f"{BASE_URL}/pro/sessions/{session_id}/end", headers=headers_mei, timeout=10)
+                if response.status_code == 200:
+                    session = response.json()
+                    if (session.get("status") == "completed" and
+                        session.get("end_time") and
+                        session.get("call_duration") >= 0):
+                        result.add_pass("POST /api/pro/sessions/{id}/end - sets completed status")
+                    else:
+                        result.add_fail("POST /api/pro/sessions/{id}/end", f"Invalid end state: {session}")
+                else:
+                    result.add_fail("POST /api/pro/sessions/{id}/end", f"Status {response.status_code}: {response.text}")
+            else:
+                result.add_fail("POST /api/pro/sessions/{id}/end", "No active sessions to end")
+        else:
+            result.add_fail("POST /api/pro/sessions/{id}/end", "Failed to get sessions")
+    except Exception as e:
+        result.add_fail("POST /api/pro/sessions/{id}/end", str(e))
+    
+    # Test 21: POST /api/pro/sessions/{id}/end - idempotent (call again)
+    print("\n" + "="*60)
+    print("TEST 21: POST /api/pro/sessions/{id}/end (idempotent)")
+    print("="*60)
+    try:
+        # Get a completed session
+        response = requests.get(f"{BASE_URL}/pro/sessions", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            sessions = response.json()
+            completed_session = next((s for s in sessions if s.get("status") == "completed"), None)
+            if completed_session:
+                session_id = completed_session["id"]
+                response = requests.post(f"{BASE_URL}/pro/sessions/{session_id}/end", headers=headers_mei, timeout=10)
+                if response.status_code == 200:
+                    session = response.json()
+                    if session.get("status") == "completed":
+                        result.add_pass("POST /api/pro/sessions/{id}/end - idempotent (no error)")
+                    else:
+                        result.add_fail("POST /api/pro/sessions/{id}/end idempotent", f"Status changed: {session.get('status')}")
+                else:
+                    result.add_fail("POST /api/pro/sessions/{id}/end idempotent", f"Status {response.status_code}: {response.text}")
+            else:
+                result.add_fail("POST /api/pro/sessions/{id}/end idempotent", "No completed sessions to test")
+        else:
+            result.add_fail("POST /api/pro/sessions/{id}/end idempotent", "Failed to get sessions")
+    except Exception as e:
+        result.add_fail("POST /api/pro/sessions/{id}/end idempotent", str(e))
+    
+    # Test 22: GET /api/pro/wallet
+    print("\n" + "="*60)
+    print("TEST 22: GET /api/pro/wallet")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/wallet", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            wallet = response.json()
+            if "balance" in wallet and "currency" in wallet:
+                result.add_pass(f"GET /api/pro/wallet - returns balance={wallet['balance']}, currency={wallet['currency']}")
+            else:
+                result.add_fail("GET /api/pro/wallet", f"Missing fields: {wallet}")
+        else:
+            result.add_fail("GET /api/pro/wallet", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/wallet", str(e))
+    
+    # Test 23: GET /api/pro/progress
+    print("\n" + "="*60)
+    print("TEST 23: GET /api/pro/progress")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/progress", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            progress = response.json()
+            required_fields = ["lessons_completed", "minutes_practiced", "tutors_met", "day_streak", "words_learned"]
+            if all(field in progress for field in required_fields):
+                if progress["lessons_completed"] >= 1:
+                    result.add_pass(f"GET /api/pro/progress - returns all fields, lessons_completed={progress['lessons_completed']}")
+                else:
+                    result.add_fail("GET /api/pro/progress", f"Expected lessons_completed >= 1, got {progress['lessons_completed']}")
+            else:
+                result.add_fail("GET /api/pro/progress", f"Missing fields: {progress}")
+        else:
+            result.add_fail("GET /api/pro/progress", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/progress", str(e))
+    
+    # Test 24: GET /api/pro/availability - default empty
+    print("\n" + "="*60)
+    print("TEST 24: GET /api/pro/availability (default empty)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/availability", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if "blocks" in data and data["blocks"] == []:
+                result.add_pass("GET /api/pro/availability - returns empty blocks by default")
+            else:
+                result.add_fail("GET /api/pro/availability default", f"Expected empty blocks, got {data}")
+        else:
+            result.add_fail("GET /api/pro/availability default", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/availability default", str(e))
+    
+    # Test 25: PUT /api/pro/availability - set blocks
+    print("\n" + "="*60)
+    print("TEST 25: PUT /api/pro/availability (set blocks)")
+    print("="*60)
+    try:
+        blocks = [{"day": 0, "slot": "08:00"}, {"day": 1, "slot": "14:00"}]
+        response = requests.put(f"{BASE_URL}/pro/availability", headers=headers_mei, json={"blocks": blocks}, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("blocks") == blocks:
+                result.add_pass("PUT /api/pro/availability - sets blocks")
+            else:
+                result.add_fail("PUT /api/pro/availability", f"Blocks not set correctly: {data}")
+        else:
+            result.add_fail("PUT /api/pro/availability", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("PUT /api/pro/availability", str(e))
+    
+    # Test 26: GET /api/pro/availability - verify blocks persisted
+    print("\n" + "="*60)
+    print("TEST 26: GET /api/pro/availability (verify persistence)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/availability", headers=headers_mei, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            blocks = data.get("blocks", [])
+            if len(blocks) == 2 and blocks[0].get("day") == 0 and blocks[0].get("slot") == "08:00":
+                result.add_pass("GET /api/pro/availability - blocks persisted correctly")
+            else:
+                result.add_fail("GET /api/pro/availability persistence", f"Blocks not persisted: {blocks}")
+        else:
+            result.add_fail("GET /api/pro/availability persistence", f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/availability persistence", str(e))
+    
+    # Test 27: GET /api/pro/me without token (should 401/403)
+    print("\n" + "="*60)
+    print("TEST 27: GET /api/pro/me (no auth - expect 401/403)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/me", timeout=10)
+        if response.status_code in [401, 403]:
+            result.add_pass("GET /api/pro/me without auth - returns 401/403")
+        else:
+            result.add_fail("GET /api/pro/me no auth", f"Expected 401/403, got {response.status_code}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/me no auth", str(e))
+    
+    # Test 28: GET /api/pro/wallet without token (should 401/403)
+    print("\n" + "="*60)
+    print("TEST 28: GET /api/pro/wallet (no auth - expect 401/403)")
+    print("="*60)
+    try:
+        response = requests.get(f"{BASE_URL}/pro/wallet", timeout=10)
+        if response.status_code in [401, 403]:
+            result.add_pass("GET /api/pro/wallet without auth - returns 401/403")
+        else:
+            result.add_fail("GET /api/pro/wallet no auth", f"Expected 401/403, got {response.status_code}")
+    except Exception as e:
+        result.add_fail("GET /api/pro/wallet no auth", str(e))
+    
+    return result
+
 
 if __name__ == "__main__":
-    main()
+    print("\n" + "="*60)
+    print("PRO SUB-APP BACKEND API TEST SUITE")
+    print("="*60)
+    result = test_pro_endpoints()
+    success = result.summary()
+    exit(0 if success else 1)

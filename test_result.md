@@ -101,6 +101,58 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## Test Run — "Pro" 1-on-1 Video Tutoring Sub-App (Phase 1 foundation)
+user_problem_statement: Add a "Pro" card to the main chat screen's top shortcut row that opens a whole new sub-app (Cambly-style 1-on-1 video language tutoring). Navbar mirrors main app icon layout but new icons: Home, Tutors, Learn, Progress, Profile. Warm Neo-Minimalism theme. Student + Tutor modes. No own auth (uses main app user). WebRTC video later (currently simulated). NOTE: A future phase adds a single unified admin dashboard with an app switcher (Main/Premium/Pro).
+
+backend:
+  - task: "Pro sub-app API — profiles, tutors, matchmaking, sessions, wallet, progress, availability"
+    implemented: true
+    working: true
+    file: "backend/routes/pro.py, backend/db.py, backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "New router /api/pro with endpoints: GET/PUT /pro/me, POST /pro/role, GET /pro/tutors (+language,q), GET /pro/tutors/{id}, POST /pro/match (instant or tutor_id), GET /pro/sessions, GET /pro/sessions/{id}, POST /pro/sessions/{id}/end, GET /pro/wallet, GET /pro/progress, GET/PUT /pro/availability. Seeds 8 demo tutors on startup (idempotent). Profiles auto-created per logged-in user (external_user_id). Wallet gives 60 free minutes. Verified basics via curl (me, tutors=8, match creates session). Needs full auth + edge-case testing. Test creds: mei@demo.com / Demo1234!"
+        - working: true
+          agent: "testing"
+          comment: "✅ COMPREHENSIVE TESTING COMPLETED (29/30 tests passed). Tested all /api/pro endpoints with mei@demo.com and diego@demo.com. PASSED TESTS: (1) GET /api/pro/me auto-creates student profile with wallet (balance=60 MIN, role=student) ✅ (2) PUT /api/pro/me updates and persists all fields (bio, native_accent, teaches, specialties, languages, hourly_rate, video_intro_url) ✅ (3) POST /api/pro/role changes role tutor↔student, invalid role returns 422 ✅ (4) GET /api/pro/tutors returns seeded tutors with correct sorting (featured/high-rated first) ✅ (5) GET /api/pro/tutors?language=en filters English tutors (3 found) ✅ (6) GET /api/pro/tutors?q=business search returns matching tutors (3 found) ✅ (7) GET /api/pro/tutors/{id} returns tutor details, invalid id returns 404 ✅ (8) POST /api/pro/match instant match creates active session with stream_room_token and tutor ✅ (9) POST /api/pro/match language=ja matches Japanese tutor ✅ (10) POST /api/pro/match tutor_id books specific tutor, nonexistent tutor_id returns 404 ✅ (11) GET /api/pro/sessions returns user's sessions (5 found) ✅ (12) GET /api/pro/sessions/{id} owner can fetch, different user gets 403, nonexistent id returns 404 ✅ (13) POST /api/pro/sessions/{id}/end sets status=completed, end_time, call_duration>=0, increments tutor lessons_taught, idempotent (no error on second call) ✅ (14) GET /api/pro/wallet returns balance and currency ✅ (15) GET /api/pro/progress returns all fields (lessons_completed>=1, minutes_practiced, tutors_met, day_streak, words_learned) ✅ (16) GET /api/pro/availability returns empty blocks by default ✅ (17) PUT /api/pro/availability sets blocks, GET verifies persistence ✅ (18) Auth enforcement: GET /api/pro/me and /api/pro/wallet without token return 401/403 ✅. Minor observation: Tutor list returned 9 tutors instead of expected 8 (8 seeded + 1 from previous test run), but this is not a bug - the seeding and filtering work correctly. All core functionality working perfectly."
+
+frontend:
+  - task: "Pro sub-app screens (Home Pulse, Tutors, Learn, Progress, Profile, Tutor detail, Classroom, Availability) + Pro entry card"
+    implemented: true
+    working: true
+    file: "frontend/app/pro/*, frontend/src/pro/theme.ts, frontend/app/(tabs)/chats.tsx, frontend/app/_layout.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Added Pro card to main chats shortcut row (route /pro). New stack /pro with bottom tabs Home/Tutors/Learn/Progress/Profile (new icons, warm palette). Neo-Minimalism theme (cream, terracotta, sage, Playfair+Inter fonts). Home Pulse screen with animated Practice Now CTA + matchmaking. Tutors feed + detail. Classroom (simulated video) with asymmetric feed, glass floating control dock, right sidebar chat/notebook. Student/Tutor role switch + tutor availability grid. Verified via screenshots: Home, Classroom render correctly."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Pro sub-app API — profiles, tutors, matchmaking, sessions, wallet, progress, availability"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: "Implemented Pro sub-app backend API with all endpoints. Please test comprehensively using mei@demo.com / Demo1234! and diego@demo.com / Demo1234!. Test all /api/pro endpoints including profile management, role switching, tutor listing/filtering, matchmaking, session management, wallet, progress tracking, and availability. Verify auth enforcement (401/403 without token). Do NOT test frontend."
+    - agent: "testing"
+      message: "✅ PRO SUB-APP BACKEND API FULLY FUNCTIONAL (29/30 tests passed, 1 minor observation). Comprehensive testing completed with mei@demo.com and diego@demo.com. ALL CRITICAL FUNCTIONALITY WORKING: Profile auto-creation with 60 MIN wallet ✅, Profile updates persist correctly ✅, Role switching (student↔tutor) works with validation ✅, 8 demo tutors seeded with correct sorting ✅, Language and search filters work ✅, Tutor detail endpoint works ✅, Instant matchmaking creates active sessions ✅, Language-specific and tutor-specific matching work ✅, Session ownership isolation enforced (403 for other users) ✅, Session ending sets completed status and increments tutor lessons_taught ✅, Idempotent session ending ✅, Wallet returns correct balance/currency ✅, Progress tracking works (lessons_completed>=1 after completing session) ✅, Availability CRUD operations work ✅, Auth enforcement working (401/403 without token) ✅. Minor observation: Tutor list returned 9 instead of 8 (extra tutor from previous test run), but seeding and filtering logic is correct. NO CRITICAL ISSUES FOUND. Ready for main agent to summarize and finish."
+
+
 ## Test Run — Premium Chat Theme + Premium Moment Comment Box Fix (Round 16)
 user_problem_statement: (1) Premium app chat conversation must render in the Premium (royal-purple + gold) theme, not the main app theme. Messaging someone from Premium should open a premium-coloured chat. (2) In Premium moment detail, the comment/reply text box was collapsing into the device's bottom gesture bar — fix it (add bottom safe-area). (3) Verify reply flow shows the reply banner correctly.
 

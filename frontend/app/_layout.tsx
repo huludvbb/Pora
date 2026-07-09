@@ -8,6 +8,17 @@ import {
   Nunito_600SemiBold,
   Nunito_700Bold,
 } from "@expo-google-fonts/nunito";
+import {
+  PlayfairDisplay_600SemiBold,
+  PlayfairDisplay_700Bold,
+  PlayfairDisplay_800ExtraBold,
+} from "@expo-google-fonts/playfair-display";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from "@expo-google-fonts/inter";
 import { useFonts } from "expo-font";
 import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
@@ -76,6 +87,13 @@ export default function RootLayout() {
     Nunito_400Regular,
     Nunito_600SemiBold,
     Nunito_700Bold,
+    PlayfairDisplay_600SemiBold,
+    PlayfairDisplay_700Bold,
+    PlayfairDisplay_800ExtraBold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
   });
 
   const ready = (iconsLoaded || !!iconsError) && (fontsLoaded || !!fontsError);
